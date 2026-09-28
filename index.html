@@ -5331,7 +5331,6 @@ function buildHeroModel(o = {}) {
   };
   if (o.hairStyle !== 'bald') heroHaircut(addLock, o.headgear);
   hair.add(buildHairMesh(locks, [[SPH3, capM], [SPH3, backM]], hc));
-  const hairX = o.hairStyle !== 'bald' ? heroHairExtras(head, HC, hc, o) : null;
   heroHeadgear(head, torso, HC, o, { metalA, metalB, metalC, mail, trimMat, gold, darkLeather });
   // Headband (or circlet for mages) with fluttering tails
   let tails = [];
@@ -5450,7 +5449,7 @@ function buildHeroModel(o = {}) {
   const fin = heroFinery({ body, torso, head, armL, armR, elbows, legL, legR, o, L, R, armor, plate, chain, robe, leather, HC, cape });
   dressCape(cape, o, L, R);
   const rig = { root, body, torso, head, legL, legR, armL, armR, hand, handL, chest, cape, face: { eyes, brows, mouth }, walk: 0, weapon: null, t: Math.random() * 10, blink: rand(1, 4), squint: 0, idle: null, look: o,
-    hero: { knees, elbows, hair, tails, scarf, orbit, fin, hairX, fingers } };
+    hero: { knees, elbows, hair, tails, scarf, orbit, fin, fingers } };
   heroHiRes(root, o, R);
   bakePivots(root);
   mergeRig(root);
@@ -13607,69 +13606,20 @@ function weaponDetail(g, item, look) {
 }
 
 // ---------------------------------------------------------------- the haircut
-// Layered, side-swept bangs from a part (one long strand between the eyes), long locks framing the face,
-// soft layers on the crown curling down at the back, nape layers flicking out, a short tied tail that
-// swings, and a cowlick that bounces when running.
-function hairLock(base, dir, len, rad, curl, want, oy = 0) {
-  const up = new THREE.Vector3(0, 1, 0), d = new THREE.Vector3(...dir).normalize(), q = new THREE.Quaternion().setFromUnitVectors(up, d);
-  const w = new THREE.Vector3(...want).normalize(), zl = new THREE.Vector3(0, 0, -1).applyQuaternion(q), proj = w.clone().addScaledVector(d, -w.dot(d));
-  if (proj.lengthSq() > 1e-4) { proj.normalize(); q.premultiply(new THREE.Quaternion().setFromAxisAngle(d, Math.atan2(zl.clone().cross(proj).dot(d), zl.dot(proj)))); }
-  return { geo: hairLockGeo(len, rad, curl), mat: new THREE.Matrix4().compose(new THREE.Vector3(base[0], oy + base[1], base[2]), q, new THREE.Vector3(1, 1, 1)), len };
-}
+// A clean, short cut: a smooth crown, soft layers at the nape, one lock framing each side of the face
+// and three side-swept bangs from a part, falling over the headband and stopping above the eyes.
 function heroHaircut(addLock, hg) {
   const tucked = hg === 'hood' || hg === 'coif';
-  // Crown: soft layers sweeping back, tips curling down
-  if (!hg) {
-  for (const [x, len] of [[-0.085, 0.19], [-0.04, 0.22], [0.0, 0.23], [0.045, 0.22], [0.09, 0.18]]) addLock([x, 0.165, 0.035], [x * 1.4, 0.3, -1], len, 0.075, 0.42, [0, -1, 0.1]);
-  for (const [x, len] of [[-0.06, 0.2], [0.02, 0.21], [0.08, 0.18]]) addLock([x, 0.12, -0.05], [x * 1.2, -0.25, -1], len, 0.07, 0.35, [0, -1, 0]);
+  // Nape: soft layers flicking out at the neck (the smooth cap is the crown)
+  if (!tucked) for (const x of [-0.075, 0.0, 0.075]) addLock([x, 0.0, -0.125], [x * 1.5, -1, -0.25], 0.13, 0.055, 0.2, [x * 2, 0, -1]);
+  // Sides: one lock over each ear, framing the face down to the cheek
+  for (const s of [-1, 1]) addLock([s * 0.112, 0.1, 0.04], [s * 0.12, -1, 0.22], 0.19, 0.05, 0.25, [-s, 0, 0.35]);
+  // Side-swept bangs from a part on the hero's left
+  const part = [0.03, 0.13, 0.05];
+  for (const [ex, ey, rad] of [[-0.11, 0.05, 0.06], [-0.06, 0.03, 0.058], [0.085, 0.045, 0.05]]) {
+    const d = [ex - part[0], ey - part[1], 0.12];
+    addLock(part, d, Math.hypot(...d) + 0.02, rad, 0.3, [0, -0.3, -1]);
   }
-  // Nape layers flicking outward
-  if (!tucked) for (const [x, len] of [[-0.1, 0.15], [-0.05, 0.17], [0.0, 0.16], [0.05, 0.17], [0.1, 0.15]]) addLock([x, 0.04, -0.1], [x * 1.8, -1, -0.45], len, 0.055, 0.25, [x * 3, 0, -1]);
-  // Sides: layers over the ears, and long locks framing the face down to the jaw
-  for (const s of [-1, 1]) {
-    if (!tucked) addLock([s * 0.125, 0.1, -0.02], [s * 0.35, -1, -0.15], 0.16, 0.055, 0.2, [s, 0, -0.3]);
-    addLock([s * 0.118, 0.105, 0.055], [s * 0.12, -1, 0.28], 0.21, 0.042, 0.28, [-s, 0, 0.35]);
-    addLock([s * 0.105, 0.12, 0.085], [s * 0.05, -1, 0.35], 0.15, 0.03, 0.3, [-s, 0, 0.2]);
-  }
-  // Side-swept bangs from a part on the hero's left, stopping above the eyes
-  const part = [0.055, 0.155, 0.075];
-  [[-0.105, 0.045], [-0.07, 0.03], [-0.03, 0.05], [0.01, 0.035], [0.05, 0.06]].forEach(([ex, ey], i) => {
-    const bx = part[0] - i * 0.018, d = [ex - bx, ey - part[1], 0.07];
-    addLock([bx, part[1], part[2]], d, Math.hypot(...d) + 0.03, 0.045 - i * 0.002, 0.3, [0, -0.3, -1]);
-  });
-  addLock([0.0, 0.15, 0.085], [-0.03, -1, 0.42], 0.17, 0.024, 0.18, [0, 0, -1]);   // the long strand between the eyes
-}
-function heroHairExtras(head, HC, hc, o) {
-  const band = o.circlet ? (o.circletGem || '#8ff0ff') : (o.headband || '#b8403a');
-  const hg = o.headgear, tucked = hg === 'hood' || hg === 'coif';
-  // A short tied tail at the nape
-  const tail = pivot(head, 0, HC - 0.1, -0.135); tail.visible = !tucked;
-  const L = [hairLock([0, 0, 0], [0, -1, -0.42], 0.3, 0.052, 0.3, [0, 0, -1]), hairLock([0.018, 0, 0], [0.18, -1, -0.34], 0.25, 0.042, 0.28, [0.4, 0, -1]), hairLock([-0.018, 0, 0], [-0.18, -1, -0.38], 0.24, 0.042, 0.28, [-0.4, 0, -1])];
-  tail.add(buildHairMesh(L, [[SPH3, new THREE.Matrix4().compose(new THREE.Vector3(0, -0.005, 0), new THREE.Quaternion(), new THREE.Vector3(0.042, 0.036, 0.04))]], hc));
-  const bm = cmat(band, { roughness: 0.7 });
-  const knot = cpart(tail, TORUS2, bm, 0, 0.002, 0, 0.036, 0.036, 0.03); knot.rotation.x = Math.PI / 2 - 0.4;
-  for (const s of [-1, 1]) { const lp = cpart(tail, SPH3, bm, s * 0.034, 0.012, -0.012, 0.028, 0.016, 0.012); lp.rotation.z = s * 0.5; }
-  // The cowlick
-  const ah = pivot(head, 0.018, HC + 0.19, -0.005); ah.visible = !hg;
-  ah.add(buildHairMesh([hairLock([0, 0, 0], [0.18, 1, -0.3], 0.13, 0.03, 0.75, [0, 0, 1])], [], hc));
-  return { tail, ah, s: { tx: 0, vx: 0, tz: 0, vz: 0, ax: 0, av: 0 } };
-}
-{
-  const baseExtrasH = animHeroExtras;
-  animHeroExtras = function (rig, dt, moving, T, speed) {
-    baseExtrasH(rig, dt, moving, T, speed);
-    const X = rig.hero && rig.hero.hairX; if (!X || dt <= 0) return;
-    const S = X.s, A = rig.anim || { yawV: 0 }, d = Math.min(dt, 0.05);
-    // Springs: the tail streams back when running and swings out on turns; the cowlick bobs
-    const tx = (moving ? 0.5 * Math.min(1.4, speed) + Math.abs(Math.cos(rig.walk)) * 0.18 : 0.06 + Math.sin(T * 1.3) * 0.03) + (rig.attacking ? 0.35 : 0) + (rig.anim ? rig.anim.recoil * 0.5 : 0);
-    const tz = clamp(-A.yawV * 0.1, -0.7, 0.7) + (moving ? Math.sin(rig.walk) * 0.12 : 0);
-    S.vx += ((tx - S.tx) * 60 - S.vx * 7) * d; S.tx += S.vx * d;
-    S.vz += ((tz - S.tz) * 50 - S.vz * 6) * d; S.tz += S.vz * d;
-    X.tail.rotation.set(S.tx, 0, S.tz);
-    const ab = moving ? Math.sin(rig.walk * 2) * 0.3 : Math.sin(T * 1.7) * 0.05;
-    S.av += ((ab - S.ax) * 90 - S.av * 5) * d; S.ax += S.av * d;
-    X.ah.rotation.set(S.ax, 0, S.tz * 0.4);
-  };
 }
 
 // ---------------------------------------------------------------- gear that weathers
@@ -13979,7 +13929,7 @@ const _hdv = new THREE.Vector3();
 
 // ---------------------------------------------------------------- footprints and wind
 // Boot prints press into soft ground (sand, mud, bog, ash, dirt paths, ice) in the ground's own colour and
-// fade out; the wind tugs at the hair tail, the cape and the headband tails.
+// fade out; the wind tugs at the cape and the headband tails.
 const PRINTS = { list: [], i: 0, tex: null };
 function footprintTex() {
   if (PRINTS.tex) return PRINTS.tex;
@@ -14025,13 +13975,11 @@ const PRINT_COL = { [T.SAND]: '#b89a62', [T.MUD]: '#3a2a18', [T.BOG]: '#2e3a1e',
   };
 }
 {
-  // Wind: gusts push the hair tail, the cape and the headband tails sideways
+  // Wind: gusts push the cape and the headband tails sideways
   const baseExtrasW = animHeroExtras;
   animHeroExtras = function (rig, dt, moving, T, speed) {
     baseExtrasW(rig, dt, moving, T, speed);
     const w = U.uWind.value || 0, gust = (Math.sin(T * 0.9) * 0.6 + Math.sin(T * 2.3 + 1) * 0.4) * w;
-    const X = rig.hero && rig.hero.hairX;
-    if (X && X.tail) { X.tail.rotation.z += gust * 0.14; X.tail.rotation.x += Math.abs(gust) * 0.05; }
     rig.capeSway = (rig.capeSway || 0) + gust * 0.02;
     if (rig.hero && rig.hero.tails) for (const s of rig.hero.tails) s.rotation.z = gust * 0.25;
   };
