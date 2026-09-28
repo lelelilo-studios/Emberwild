@@ -5644,7 +5644,7 @@ function buildWeapon(item) {
 }
 /** Equipment -> appearance options for the hero's rig. */
 function heroLook(player) {
-  const o = { scale: 1.12, skin: '#f1c7a1', hair: '#c9602a', hairStyle: 'spiky', eye: '#3f9a5a', tunic: '#3f74b8', pants: '#2f2a3c', scarf: '#c0392b', headband: '#7a1f2c', trim: '#f2c46d', belt: '#4a2f1c', boots: '#5a3a24', brow: 0.18 };
+  const o = { scale: 1.12, skin: '#f1c7a1', hair: '#c4561f', hairStyle: 'spiky', eye: '#3f9a5a', tunic: '#2a5aa8', pants: '#2c2638', scarf: '#b3262c', headband: '#7a1f2c', trim: '#f0bf55', belt: '#4a2c19', boots: '#5a3620', brow: 0.18 };
   const a = player.equip.armor;
   if (a) {
     const L = a.look || ItemLook.make(a), heavy = a.icon === 'plate' || a.icon === 'chain';
@@ -13152,25 +13152,13 @@ float hdFade(float freq) { return 1.0 - smoothstep(0.35, 1.1, length(fwidth(vOP)
 float hdHeight(float k) {
   vec3 p = vOP;
   if (k < 0.5) return 0.0;
-  if (k < 1.5) {        // cloth: soft folds, then a woven texture close up
-    float folds = hdN(p * vec3(14.0, 5.0, 14.0)) * 0.65 + hdN(p * 38.0) * 0.35;
-    float F = 780.0, wv = sin(p.y * F) * 0.5 + 0.5, wu = sin((p.x + p.z) * F) * 0.5 + 0.5;
-    return folds * 0.0045 + (wv * wu) * 0.0009 * hdFade(F);
-  }
-  if (k < 2.5) {        // leather: creases and pores
-    float cr = abs(hdN(p * vec3(30.0, 60.0, 30.0)) - 0.5) * 2.0;
-    return (1.0 - cr) * 0.0022 + hdN(p * 320.0) * 0.0007 * hdFade(320.0);
-  }
-  if (k < 3.5) return hdN(p * 90.0) * 0.00025;   // skin: barely there
-  if (k < 5.5) {        // fur: strands
-    return (sin(p.y * 520.0 + hdN(p * 60.0) * 9.0) * 0.5 + 0.5) * 0.0018 * hdFade(520.0) + hdN(p * 40.0) * 0.003;
-  }
-  if (k < 7.5) {        // armour metal: hammer dents and brushing
-    float dents = hdN(p * 55.0);
-    float brush = hdN(vec3(p.x * 900.0, p.y * 12.0, p.z * 900.0));
-    return dents * 0.0028 * (0.6 + uHdWear) + brush * 0.00045 * hdFade(900.0);
-  }
-  return hdN(p * 70.0) * 0.0006;                   // polished trim
+  // Painted miniature: only broad, soft forms; the paint (below) does the rest
+  if (k < 1.5) return hdN(p * vec3(12.0, 4.5, 12.0)) * 0.0032;                           // cloth: a few soft folds
+  if (k < 2.5) return (1.0 - abs(hdN(p * vec3(18.0, 34.0, 18.0)) - 0.5) * 2.0) * 0.0011;   // leather: gentle creases
+  if (k < 3.5) return 0.0;                                                               // skin: smooth
+  if (k < 5.5) return hdN(p * 26.0) * 0.0035;                                            // fur: soft tufts
+  if (k < 7.5) return hdN(p * 14.0) * 0.0009 * (0.4 + uHdWear);                          // armour: a slight hand-made waver
+  return 0.0;                                                                            // polished trim
 }
 vec3 hdBump(vec3 N, float h, float s) {
   vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition);
@@ -13196,10 +13184,10 @@ function hdMaterial(mat, kind, wear = 0.5) {
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         { float hk = vDK; if (hk > 0.5 && hk < 5.5 || hk > 6.5) normal = hdBump(normal, hdHeight(hk), 1.0); }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        if (vDK > 6.5 && vDK < 7.5) roughnessFactor = clamp(roughnessFactor * (0.75 + hdN(vOP * 18.0) * 0.55 * (0.5 + uHdWear)), 0.05, 1.0);
+        if (vDK > 6.5 && vDK < 7.5) roughnessFactor = clamp(roughnessFactor * (0.85 + hdN(vOP * 5.0) * 0.25 * (0.5 + uHdWear)), 0.05, 1.0);
         if (vDK > 0.5 && vDK < 1.5) roughnessFactor = min(1.0, roughnessFactor + 0.08);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        if (vDK > 0.5 && vDK < 2.5) diffuseColor.rgb *= 0.9 + hdN(vOP * 22.0) * 0.18;
+        if (vDK > 0.5 && vDK < 2.5) diffuseColor.rgb *= 0.95 + hdN(vOP * 5.0) * 0.1;
         { float gy = clamp((vWPos.y - uPlayer.y + 0.2) / 0.55, 0.0, 1.0); diffuseColor.rgb *= mix(0.74, 1.0, smoothstep(0.0, 1.0, gy)); }`)
       .replace('#include <tonemapping_fragment>', `
         { // Rim light that wraps the silhouette; warm on skin, cool at night
@@ -13208,6 +13196,14 @@ function hdMaterial(mat, kind, wear = 0.5) {
           if (vDK > 2.5 && vDK < 3.5) rc *= vec3(1.25, 0.85, 0.7);
           rc = mix(rc, uElemCol * 0.75, uElemAmt) * (1.0 + uElemAmt * 1.1);
           gl_FragColor.rgb += rc * rim * (vDK > 6.5 ? 1.3 : 1.0);
+          // Painted-miniature finish: curvature from how fast the normal turns against the surface
+          vec3 vp = -vViewPosition, dpx = dFdx(vp), dpy = dFdy(vp);
+          float curv = (dot(dFdx(normal), dpx) + dot(dFdy(normal), dpy)) / max(dot(dpx, dpx) + dot(dpy, dpy), 1e-9);
+          float edge = smoothstep(18.0, 60.0, curv), crease = smoothstep(-6.0, -30.0, curv);
+          if (vDK > 0.5 && (vDK < 5.5 || vDK > 6.5)) {
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.3 + vec3(0.035, 0.03, 0.02), edge * (vDK > 6.5 ? 0.55 : 0.4));
+            gl_FragColor.rgb *= 1.0 - crease * 0.3;
+          }
           ${kind === 6 ? `// Hair: an anime "angel ring" of light across the crown
           float band = smoothstep(0.02, 0.0, abs(vOP.y - 0.265 - sin(atan(vOP.x, vOP.z) * 9.0) * 0.008));
           float face = clamp(normal.z * 1.4 - 0.2, 0.0, 1.0);
@@ -15084,7 +15080,7 @@ const HD_SUN = { uSunV: { value: new THREE.Vector3(0, 1, 0) }, uSunC: { value: n
 
 const HD_COLD = { value: 0 };
 // ---------------------------------------------------------------- hair, strand by strand
-// Hair gets strands: broad lighter and darker streaks running down each lock, fine grooves that catch the
+// Hair gets strands: a few broad lighter and darker painted streaks down each lock, soft grooves that catch the
 // light up close, roots a shade deeper at the crown and sun-bleached, warmer tips on the long locks and tail.
 {
   const baseHdH = hdMaterial;
@@ -15102,13 +15098,13 @@ const HD_COLD = { value: 0 };
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         if (vDK > 5.5 && vDK < 6.5) {   // fine strand grooves
           float ha = atan(vOP.x, vOP.z), hn = hdN(vec3(ha * 9.0, vOP.y * 6.0, 1.7));
-          normal = hdBump(normal, (sin(ha * 150.0 + hn * 9.0) * 0.5 + 0.5) * 0.0007 * hdFade(420.0), 1.0);
+          normal = hdBump(normal, (sin(ha * 60.0 + hn * 6.0) * 0.5 + 0.5) * 0.0004 * hdFade(200.0), 1.0);
         }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
         if (vDK > 5.5 && vDK < 6.5) {
           float ha = atan(vOP.x, vOP.z);
-          float streak = hdN(vec3(ha * 16.0, vOP.y * 2.2, 3.1)) * 0.65 + hdN(vec3(ha * 47.0, vOP.y * 4.0, 7.3)) * 0.35;
-          diffuseColor.rgb *= 0.88 + streak * 0.24;
+          float streak = hdN(vec3(ha * 9.0, vOP.y * 1.6, 3.1));   // a few broad painted streaks, not grain
+          diffuseColor.rgb *= 0.94 + streak * 0.12;
           float root = smoothstep(0.29, 0.37, vOP.y), tip = clamp((0.3 - vOP.y) / 0.42, 0.0, 1.0);
           diffuseColor.rgb *= 1.0 - root * 0.16;
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 1.3 + vec3(0.07, 0.045, 0.0), tip * tip * 0.4);
