@@ -5208,6 +5208,11 @@ function buildHeroModel(o = {}) {
   }
   { const kn = pivot(torso, 0.02, 0.0, -0.1); kn.userData.bake = true; kn.userData.bake = true; kn.rotation.set(0.25, 0, 1.25);
     cpart(kn, roundBox(0.03, 0.13, 0.018, 0.008), darkLeather, 0, -0.03, 0, 1, 1, 1); cpart(kn, CYL12, '#2a1a12', 0, 0.075, 0, 0.012, 0.06, 0.012); cpart(kn, SPHL, gold, 0, 0.108, 0, 0.016, 0.012, 0.016); }
+  { const ch = pivot(torso, -0.056, -0.002, 0.106); ch.userData.bake = true; ch.rotation.z = 0.08;
+    cpart(ch, CYL12, darkLeather, 0, -0.018, 0, 0.0035, 0.036, 0.0035);
+    cpart(ch, SPH3, glowC('#ff5a14', 0.6), 0, -0.052, 0, 0.01, 0.011, 0.008);
+    cpart(ch, CONE12, glowC('#ff5a14', 0.6), 0, -0.035, 0, 0.0085, 0.03, 0.0065);
+    cpart(ch, TORUS2, gold, 0, -0.037, 0, 0.011, 0.011, 0.01).rotation.x = Math.PI / 2; }
   // Garment below the belt
   if (robe) {
     cpart(torso, hLathe('robeSkirt', [[0.25, -0.47], [0.232, -0.38], [0.19, -0.2], [0.155, -0.05], [0.14, 0.02]], 22), cmat(tunic, { roughness: 0.8 }), 0, 0, 0, 1, 1, 0.8);
@@ -5231,8 +5236,13 @@ function buildHeroModel(o = {}) {
     // Layered tunic: V neck with lacing, collar, shoulder seams and a strap across the chest
     const vn = pivot(torso, 0, 0.36, 0.093); vn.userData.bake = true; vn.rotation.x = -0.3;
     cpart(vn, CONE12, skin, 0, -0.03, 0, 0.034, 0.07, 0.01).rotation.x = Math.PI;
-    for (let i = 0; i < 3; i++) for (const s of [-1, 1]) { const l = cpart(vn, BOXC, trimMat, 0, -0.015 - i * 0.02, 0.006, 0.042, 0.005, 0.004); l.rotation.z = s * 0.5; }
-    for (const s of [-1, 1]) { const lp = cpart(torso, roundBox(0.05, 0.14, 0.012, 0.006), trimMat, s * 0.05, 0.33, 0.1, 1, 1, 1); lp.rotation.set(-0.32, s * 0.25, s * 0.28); }
+    for (const s of [-1, 1]) { const l = cpart(vn, BOXC, trimMat, 0, -0.03, 0.006, 0.05, 0.007, 0.005); l.rotation.z = s * 0.6; }
+    cpart(torso, hLathe('placket', [[0.126, 0.03], [0.132, 0.06], [0.152, 0.13], [0.174, 0.22], [0.187, 0.3], [0.182, 0.34]], 20, -0.13, 0.26), cmat(shade(tunic, 0.8), { roughness: 0.8 }), 0, 0, 0, 1, 1, 0.7);
+    const wood = cmat('#7a4a26', { roughness: 0.55 }), tgs = pivot(torso, 0, 0, 0); tgs.userData.noOutline = true; tgs.userData.bake = true;   // small: plain paint, no seams
+    for (const [y, r] of [[0.13, 0.152], [0.235, 0.18]]) {
+      const tg = cpart(tgs, CYL12, wood, 0, y, (r + 0.012) * 0.7, 0.009, 0.042, 0.009); tg.rotation.z = Math.PI / 2;
+      cpart(tgs, TORUS2, darkLeather, 0.012, y, (r + 0.007) * 0.7, 0.012, 0.012, 0.01);
+    }
     const st = pivot(torso, 0, 0.21, 0); st.userData.bake = true; st.rotation.z = 0.78;
     cpart(st, hLathe('strap', [[0.188, -0.018], [0.19, 0.018]], 22), darkLeather, 0, 0, 0, 1, 1, 0.72);
     cpart(st, roundBox(0.03, 0.036, 0.012, 0.006), steel, 0, 0, 0.14, 1, 1, 1);
@@ -5296,7 +5306,11 @@ function buildHeroModel(o = {}) {
   const head = pivot(torso, 0, 0.445, 0.005);
   const HC = 0.155;
   cpart(head, heroHeadGeo(), skin, 0, HC, 0.004, 0.142, 0.16, 0.148);
-  for (const s of [-1, 1]) { const e = cpart(head, SPHL, skin, s * 0.137, HC - 0.005, -0.005, 0.022, 0.036, 0.026); e.rotation.z = s * -0.2; cpart(head, SPHL, shade(skin, 0.85), s * 0.145, HC - 0.005, -0.002, 0.01, 0.02, 0.012).castShadow = false; }
+  for (const s of [-1, 1]) {
+    const ear = pivot(head, s * 0.133, HC - 0.008, -0.006); ear.userData.bake = true; ear.rotation.set(0, s * 0.42, s * -0.12);
+    cpart(ear, SPHL, mixHex(skin, '#e8967c', 0.2), 0, 0, 0, 0.015, 0.032, 0.024);
+    cpart(ear, SPHL, mixHex(shade(skin, 0.78), '#d9786a', 0.4), s * 0.009, -0.002, 0.003, 0.006, 0.02, 0.013).castShadow = false;
+  }
   const fd = pivot(head, 0, 0, 0); fd.userData.noOutline = true;
   cpart(fd, SPHL, shade(skin, 0.97), 0, HC - 0.03, 0.146, 0.015, 0.02, 0.014);
   // Eyes (own pivot so they blink): almond whites, bright irises, pupils and a catchlight
@@ -5353,7 +5367,8 @@ function buildHeroModel(o = {}) {
   const elbows = [];
   const upperMat = plate ? metalB : chain ? mail : cmat(robe ? tunic : leather ? (o.sleeve || '#e8dcc0') : sleeve, { roughness: 0.78 });
   for (const [arm, sg] of [[armL, -1], [armR, 1]]) {
-    cpart(arm, SPH3, upperMat, 0, -0.012, 0, 0.062, 0.058, 0.064);
+    cpart(arm, SPH3, upperMat, 0, -0.008, 0, 0.055, 0.05, 0.057);
+    if (!plate && !chain) cpart(arm, hLathe('sleeveSeam', [[0.0535, -0.004], [0.0555, 0.0], [0.0535, 0.004]], 16), cmat(shade(robe ? tunic : leather ? (o.sleeve || '#e8dcc0') : sleeve, 0.72), { roughness: 0.8 }), 0, -0.035, 0, 1, 1, 1);
     const elbow = pivot(arm, 0, -0.165, 0); elbows.push(elbow); elbow.rotation.x = -0.25;
     // Forearm: rolled sleeve / bare skin / armour, bracer, hand
     const foreMat = plate ? metalA : chain ? mail : robe ? cmat(tunic) : cmat(skin);
@@ -5380,11 +5395,23 @@ function buildHeroModel(o = {}) {
     if (plate || (chain && R >= 1) || ((leather || !armor || armor === 'tunic') && sg < 0)) {
       const pm = plate ? metalA : chain ? metalB : cmat(shade(leatherC, 0.8), { roughness: 0.6 });
       const pd = pivot(arm, sg * 0.012, 0.02, 0); pd.userData.bake = true; pd.rotation.z = sg * -0.32;
-      cpart(pd, DOME, pm, 0, 0, 0, plate ? 0.1 : 0.085, plate ? 0.08 : 0.065, plate ? 0.1 : 0.09);
-      cpart(pd, DOME, plate ? metalB : pm, sg * 0.018, -0.045, 0, plate ? 0.095 : 0.08, 0.06, plate ? 0.095 : 0.085).rotation.z = sg * -0.2;
-      if (plate) cpart(pd, DOME, metalA, sg * 0.03, -0.085, 0, 0.085, 0.05, 0.085).rotation.z = sg * -0.35;
-      cpart(pd, TORUS2, plate || chain ? trimMat : gold, 0, -0.002, 0, 0.1, 0.1, 0.08).rotation.x = Math.PI / 2;
-      for (let i = 0; i < 3; i++) { const a = -0.9 + i * 0.9; rivet(pd, Math.sin(a) * 0.07, 0.03, Math.cos(a) * 0.07); }
+      if (plate || chain) {
+        cpart(pd, DOME, pm, 0, 0, 0, plate ? 0.1 : 0.085, plate ? 0.08 : 0.065, plate ? 0.1 : 0.09);
+        cpart(pd, DOME, plate ? metalB : pm, sg * 0.018, -0.045, 0, plate ? 0.095 : 0.08, 0.06, plate ? 0.095 : 0.085).rotation.z = sg * -0.2;
+        if (plate) cpart(pd, DOME, metalA, sg * 0.03, -0.085, 0, 0.085, 0.05, 0.085).rotation.z = sg * -0.35;
+        cpart(pd, TORUS2, trimMat, 0, -0.002, 0, 0.1, 0.1, 0.08).rotation.x = Math.PI / 2;
+        for (let i = 0; i < 3; i++) { const a = -0.9 + i * 0.9; rivet(pd, Math.sin(a) * 0.07, 0.03, Math.cos(a) * 0.07); }
+      } else {
+        // Two overlapping leather lames with a rolled, darker edge, riveted, strapped round the upper arm
+        cpart(pd, DOME, pm, 0, 0, 0, 0.078, 0.048, 0.082);
+        cpart(pd, TORUS2, darkLeather, 0, 0.001, 0, 0.078, 0.082, 0.07).rotation.x = Math.PI / 2;
+        const low = pivot(pd, sg * 0.03, -0.045, 0); low.userData.bake = true; low.rotation.z = sg * -0.42;
+        cpart(low, DOME, cmat(shade(leatherC, 0.66), { roughness: 0.62 }), 0, 0, 0, 0.064, 0.036, 0.072);
+        cpart(low, TORUS2, darkLeather, 0, 0.001, 0, 0.064, 0.072, 0.055).rotation.x = Math.PI / 2;
+        for (const a of [-0.55, 0, 0.55]) rivet(pd, Math.sin(a) * 0.072, 0.008, Math.cos(a) * 0.075, 0.008);
+        cpart(arm, hLathe('padStrap', [[0.0505, -0.009], [0.0525, 0.0], [0.0505, 0.009]], 16), darkLeather, 0, -0.1, 0, 1, 1, 1);
+        const bk = cpart(arm, roundBox(0.02, 0.022, 0.008, 0.004), gold, sg * 0.051, -0.1, 0.006, 1, 1, 1); bk.rotation.y = sg * Math.PI / 2;
+      }
       if (L.spikes && plate) { const sp = cpart(pd, CONE12, metalA, sg * 0.02, 0.07, 0, 0.026, 0.1, 0.026); sp.rotation.z = sg * -0.3; }
     }
   }
@@ -5409,10 +5436,16 @@ function buildHeroModel(o = {}) {
     cpart(torso, hLathe('capeRoll', [[0.16, 0.37], [0.166, 0.385], [0.15, 0.41]], 18, Math.PI * 0.62, Math.PI * 0.76), cmat(shade(o.cape, 0.8), { roughness: 0.85 }), 0, 0, 0, 1, 1, 0.78);
   } else if (o.scarf) {
     // Scarf wrapped around the neck, knotted at the side, ends streaming behind
-    const sc = cmat(o.scarf, { roughness: 0.85 });
-    cpart(torso, hLathe('scarfWrap', [[0.082, 0.39], [0.108, 0.405], [0.112, 0.43], [0.098, 0.455], [0.075, 0.465]], 18), sc, 0, 0, 0.005, 1, 1, 0.95);
-    cpart(torso, SPH3, sc, -0.075, 0.41, -0.07, 0.04, 0.036, 0.034);
-    scarf = [heroStrip(torso, 0.07, 0.34, 8, o.scarf, shade(o.scarf, 0.75), -0.08, 0.41, -0.09, 0.4, -0.3), heroStrip(torso, 0.06, 0.26, 7, o.scarf, shade(o.scarf, 0.75), -0.05, 0.4, -0.1, 2.1, 0.2)];
+    const sc = cmat(o.scarf, { roughness: 0.85 }), scD = cmat(shade(o.scarf, 0.8), { roughness: 0.85 }), stripe = mixHex(trim, '#fff2d0', 0.2);
+    const wrap = pivot(torso, 0, 0.412, 0.005); wrap.userData.bake = true; wrap.rotation.x = 0.1;
+    cpart(wrap, hLathe('scarfLow', [[0.084, -0.024], [0.108, -0.016], [0.116, 0.0], [0.112, 0.018], [0.094, 0.026]], 18), scD, 0, 0, 0, 1, 1, 0.95);
+    cpart(wrap, hLathe('scarfStripe', [[0.1152, -0.009], [0.117, -0.004], [0.1152, 0.001]], 18), cmat(stripe, { roughness: 0.8 }), 0, 0, 0, 1, 1, 0.95);
+    const fold = pivot(torso, 0, 0.436, 0.004); fold.userData.bake = true; fold.rotation.x = -0.08;
+    cpart(fold, hLathe('scarfFold', [[0.078, -0.022], [0.1, -0.016], [0.106, -0.002], [0.098, 0.013], [0.074, 0.02]], 18), sc, 0, 0, 0, 1, 1, 0.95);
+    const kn = pivot(torso, -0.082, 0.412, -0.062); kn.userData.bake = true; kn.rotation.y = -0.6;
+    cpart(kn, SPH3, sc, 0, 0, 0, 0.028, 0.026, 0.024);
+    for (const s of [-1, 1]) { const lb = cpart(kn, SPH3, scD, s * 0.03, 0.006, -0.006, 0.03, 0.019, 0.013); lb.rotation.z = s * 0.45; }
+    scarf = [heroStrip(torso, 0.08, 0.34, 8, o.scarf, stripe, -0.085, 0.405, -0.075, 0.4, -0.3), heroStrip(torso, 0.068, 0.26, 7, o.scarf, stripe, -0.06, 0.4, -0.085, 2.1, 0.2)];
   }
 
   // ---------------------------------------------------------------- mage orbiters
@@ -5644,7 +5677,7 @@ function buildWeapon(item) {
 }
 /** Equipment -> appearance options for the hero's rig. */
 function heroLook(player) {
-  const o = { scale: 1.12, skin: '#f1c7a1', hair: '#c4561f', hairStyle: 'spiky', eye: '#3f9a5a', tunic: '#2a5aa8', pants: '#2c2638', scarf: '#b3262c', headband: '#7a1f2c', trim: '#f0bf55', belt: '#4a2c19', boots: '#5a3620', brow: 0.18 };
+  const o = { scale: 1.12, skin: '#f1c7a1', hair: '#c4561f', hairStyle: 'spiky', eye: '#3f9a5a', tunic: '#2a5aa8', pants: '#2c2638', scarf: '#9a1c24', headband: '#7a1f2c', trim: '#f0bf55', belt: '#4a2c19', boots: '#5a3620', brow: 0.18 };
   const a = player.equip.armor;
   if (a) {
     const L = a.look || ItemLook.make(a), heavy = a.icon === 'plate' || a.icon === 'chain';
@@ -13199,8 +13232,8 @@ function hdMaterial(mat, kind, wear = 0.5) {
           // Painted-miniature finish: curvature from how fast the normal turns against the surface
           vec3 vp = -vViewPosition, dpx = dFdx(vp), dpy = dFdy(vp);
           float curv = (dot(dFdx(normal), dpx) + dot(dFdy(normal), dpy)) / max(dot(dpx, dpx) + dot(dpy, dpy), 1e-9);
-          float edge = smoothstep(18.0, 60.0, curv), crease = smoothstep(-6.0, -30.0, curv);
-          if (vDK > 0.5 && (vDK < 5.5 || vDK > 6.5)) {
+          float edge = smoothstep(18.0, 60.0, curv) * smoothstep(260.0, 110.0, curv), crease = smoothstep(-6.0, -30.0, curv);
+          if (vDK > 0.5 && (vDK < 2.5 || (vDK > 3.5 && vDK < 5.5) || vDK > 6.5)) {
             gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.3 + vec3(0.035, 0.03, 0.02), edge * (vDK > 6.5 ? 0.55 : 0.4));
             gl_FragColor.rgb *= 1.0 - crease * 0.3;
           }
