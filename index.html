@@ -5254,7 +5254,8 @@ function buildHeroModel(o = {}) {
     for (const s of [-1, 1]) { const x = pivot(torso, 0, 0.22, 0); x.userData.bake = true; x.userData.bake = true; x.rotation.z = s * 0.62; cpart(x, hLathe('xstrap', [[0.186, -0.016], [0.188, 0.016]], 22), darkLeather, 0, 0, 0, 1, 1, 0.72); }
     cpart(torso, CYL12, gold, 0, 0.22, 0.128, 0.02, 0.012, 0.02).rotation.x = Math.PI / 2;
     const fur = cmat('#d9cbb0', { roughness: 0.95 }), furD = cmat('#b8a888', { roughness: 0.95 });
-    for (let i = 0; i < 14; i++) { const a = -2.4 + i / 13 * 4.8; cpart(torso, SPH3, i % 2 ? fur : furD, Math.sin(a) * 0.12, 0.405 + Math.cos(a) * 0.01, Math.cos(a) * 0.085, 0.052, 0.04, 0.05); }
+    cpart(torso, hLathe('furRoll', [[0.085, 0.37], [0.13, 0.378], [0.158, 0.4], [0.158, 0.428], [0.132, 0.448], [0.09, 0.45]], 22, Math.PI * 0.72, Math.PI * 1.56), fur, 0, 0, 0, 1, 1, 0.78);
+    cpart(torso, hLathe('furRollIn', [[0.08, 0.372], [0.1, 0.44]], 22, Math.PI * 0.72, Math.PI * 1.56), furD, 0, 0, 0, 1, 1, 0.78);
     const hood = pivot(torso, 0, 0.36, -0.12); hood.userData.bake = true; hood.rotation.x = -0.5;
     cpart(hood, SPH3, cmat(shade(leatherC, 0.9), { roughness: 0.85 }), 0, -0.02, -0.02, 0.13, 0.1, 0.07);
     cpart(hood, CONE12, cmat(shade(leatherC, 0.9), { roughness: 0.85 }), 0, -0.12, -0.03, 0.05, 0.12, 0.03).rotation.x = Math.PI - 0.3;
@@ -5455,6 +5456,13 @@ function buildHeroModel(o = {}) {
     for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2, p = pivot(orbit, Math.cos(a) * 0.38, Math.sin(i * 2.1) * 0.08, Math.sin(a) * 0.38); const gm = cpart(p, OCT, glowC(glowCol, 2), 0, 0, 0, 0.025, 0.05, 0.025); gm.userData.solo = true; p.add(glowSprite(glowCol, 0.22, 0.7)); }
   }
 
+  // ---------------------------------------------------------------- legendary motes
+  let motes = null;
+  if (armor && R >= 4) {
+    motes = pivot(body, 0, 0, 0); motes.userData.col = L.glow || L.gem || '#ffd166';
+    for (let i = 0; i < 5; i++) { const m = glowSprite(motes.userData.col, 0.07, 0.8); m.userData.ph = i / 5; m.userData.a = i * 2.4; motes.add(m); }
+  }
+
   // ---------------------------------------------------------------- trinket
   const tr = o.trinket;
   if (tr) {
@@ -5482,7 +5490,7 @@ function buildHeroModel(o = {}) {
   const fin = heroFinery({ body, torso, head, armL, armR, elbows, legL, legR, o, L, R, armor, plate, chain, robe, leather, HC, cape });
   dressCape(cape, o, L, R);
   const rig = { root, body, torso, head, legL, legR, armL, armR, hand, handL, chest, cape, face: { eyes, brows, mouth }, walk: 0, weapon: null, t: Math.random() * 10, blink: rand(1, 4), squint: 0, idle: null, look: o,
-    hero: { knees, elbows, hair, tails, scarf, orbit, fin, fingers } };
+    hero: { knees, elbows, hair, tails, scarf, orbit, fin, fingers, motes } };
   heroHiRes(root, o, R);
   bakePivots(root);
   mergeRig(root);
@@ -5508,6 +5516,10 @@ function animHeroExtras(rig, dt, moving, T, speed) {
   H.flare = lerp(H.flare || flare, flare, 0.12);
   for (const s of H.tails) animStrip(s, H.flare * 1.1, T, moving);
   for (const s of H.scarf) animStrip(s, H.flare, T, moving);
+  if (H.motes) for (const m of H.motes.children) {   // rise from the boots to above the head, swirling, fading in and out
+    const u = (T * 0.16 + m.userData.ph) % 1, a = m.userData.a + T * 0.7 + u * 2.5, r = 0.3 - u * 0.1;
+    m.position.set(Math.cos(a) * r, 0.1 + u * 1.25, Math.sin(a) * r); m.material.opacity = Math.sin(u * Math.PI) * 0.8; m.scale.setScalar(0.05 + Math.sin(u * Math.PI) * 0.04);
+  }
   if (H.orbit) { H.orbit.rotation.y += dt * 1.6; H.orbit.children.forEach((p, i) => { p.position.y = Math.sin(T * 2 + i * 2.1) * 0.08; p.rotation.y += dt * 3; }); }
 }
 
@@ -13886,10 +13898,15 @@ function heroHeadgear(head, torso, HC, o, K) {
   } else if (hg === 'hood') {
     const cloth = o.armor === 'robe' ? shade(o.tunic, 0.85) : (L.cape && R >= 2 ? shade(L.cape, 0.8) : shade(o.tunic || '#7a4e2c', 0.8));
     const p = pivot(head, 0, HC + 0.015, -0.012); p.rotation.x = -0.12;
-    const outer = new THREE.Mesh(S(20, 11, Math.PI / 2 + 1.05, Math.PI * 2 - 2.1, 0, Math.PI * 0.8), cmat(cloth, { roughness: 0.85, side: THREE.DoubleSide })); outer.scale.set(0.205, 0.215, 0.212); outer.castShadow = true; p.add(outer);
-    const inner = new THREE.Mesh(S(20, 11, Math.PI / 2 + 1.05, Math.PI * 2 - 2.1, 0, Math.PI * 0.8), cmat(shade(cloth, 0.35), { side: THREE.BackSide })); inner.scale.set(0.2, 0.21, 0.207); p.add(inner);
+    const cowl = () => {   // a sphere opened at the front, drawn up into a soft peak at the back of the crown
+      const g = S(20, 11, Math.PI / 2 + 0.85, Math.PI * 2 - 1.7, 0, Math.PI * 0.78), P = g.attributes.position;
+      for (let i = 0; i < P.count; i++) { const y = P.getY(i), z = P.getZ(i), k = Math.max(0, y) ** 2 * Math.max(0, 0.4 - z); P.setY(i, y + k * 0.3); P.setZ(i, z - k * 0.35); }
+      g.computeVertexNormals(); g.userData.own = true; return g;
+    };
+    const outer = new THREE.Mesh(cowl(), cmat(cloth, { roughness: 0.85, side: THREE.DoubleSide })); outer.scale.set(0.182, 0.2, 0.19); outer.castShadow = true; p.add(outer);
+    const inner = new THREE.Mesh(cowl(), cmat(shade(cloth, 0.55), { side: THREE.BackSide })); inner.scale.set(0.178, 0.196, 0.186); p.add(inner);
     // The hood's long tail, and a short mantle over the shoulders
-    const tail = cpart(p, CONE12, cloth, 0, -0.02, -0.21, 0.055, 0.26, 0.035); tail.rotation.x = Math.PI - 0.55;
+    const tail = cpart(p, CONE12, cloth, 0, 0.0, -0.19, 0.05, 0.22, 0.032); tail.rotation.x = Math.PI - 0.55;
     if (o.armor !== 'robe') cpart(torso, hLathe('hoodMantle', [[0.225, 0.29], [0.215, 0.33], [0.17, 0.39], [0.11, 0.425], [0.07, 0.44]], 22), cmat(cloth, { roughness: 0.85 }), 0, 0, 0, 1, 1, 0.82);
     if (R >= 2) { const tr = cpart(torso, hLathe('hoodMantleTrim', [[0.227, 0.285], [0.228, 0.305], [0.22, 0.308]], 22), K.trimMat, 0, 0, 0, 1, 1, 0.82); tr.castShadow = false; }
   } else if (hg === 'hat') {
