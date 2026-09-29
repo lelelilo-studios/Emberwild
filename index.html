@@ -17530,11 +17530,13 @@ function buildPillowModel(o = {}) {
   }
   for (let i = 0; i < 4; i++) { const sp = glowSprite('#f4fbff', 0.035, 0.5); sp.userData.ph = i / 4; body.add(sp); wind.specks.push(sp); }
   const wispR = glowSprite('#e6f4ff', 0.2, 0.3), wispL = glowSprite('#e6f4ff', 0.16, 0.3); hand.add(wispR); handL.add(wispL); wispL.visible = false;
+  // A thread of light from the side seam to whatever the ghost hand holds, as if the pillow had sewn it on
+  const tether = []; for (let i = 0; i < 7; i++) { const sp = glowSprite('#f4f8ff', 0.03, 0); sp.userData.noFlash = true; torso.add(sp); tether.push(sp); }
 
   const rig = { root, body, torso, head: upper, legL, legR, armL, armR, hand, handL, chest: bodyMesh, cape, face: { eyes: new THREE.Object3D(), brows: new THREE.Object3D(), mouth: new THREE.Object3D() },
     walk: 0, weapon: null, t: Math.random() * 10, blink: rand(1, 4), squint: 0, idle: null, look: o,
     hero: { knees, elbows, hair: hair || pivot(upper, 0, PIL.ZT - PIL.UP, 0), tails: [], scarf: [], orbit, fin: null, fingers: null, motes },
-    pillow: { cushion, lower, upper, tufts: [tuftA, tuftB], hat, cape, wind, wispR, wispL, faceMesh, bodyMesh, dangle: W.dangle, earring: W.earring } };
+    pillow: { cushion, lower, upper, tufts: [tuftA, tuftB], hat, cape, wind, wispR, wispL, tether, faceMesh, bodyMesh, dangle: W.dangle, earring: W.earring } };
   // Bind every skinned part to one skeleton in the rest pose
   root.updateMatrixWorld(true);
   const skel = new THREE.Skeleton(bones);
@@ -17630,6 +17632,7 @@ function pillowGait(rig, dt, moving, T, speed, G) {
   }
   rig.legL.rotation.x = rig.legR.rotation.x = 0;
 }
+const _tv = new THREE.Vector3();
 function pillowAnimate(rig, dt, moving, T, speed) {
   const P = rig.pillow, G = rig.gait || {}, A = rig.anim || { yawV: 0 }, d = Math.min(Math.max(dt, 0), 0.05);
   const mv = G.mv || 0, run = G.run || 0, ph = T * Math.PI;
@@ -17702,6 +17705,16 @@ function pillowAnimate(rig, dt, moving, T, speed) {
   P.wispR.visible = !!held && dk < 0.5; P.wispR.material.opacity = 0.22 + 0.1 * Math.sin(T * 5.3);
   let busyL = false; for (const c of rig.handL.children) if (c !== P.wispL && c.visible && !c.userData.ring && (c.isMesh || c.children.length)) { busyL = true; break; }
   P.wispL.visible = busyL && dk < 0.5; P.wispL.material.opacity = 0.2 + 0.08 * Math.sin(T * 4.7 + 1);
+  // The thread of light from the right side seam to the held weapon sags a little and shimmers along its length
+  if (P.tether) {
+    const on = held && dk < 0.5 && !P.wFly, a = P.seam || (P.seam = pillowPoint(1, -0.1, 0).add(new THREE.Vector3(0.01, PIL.CY, 0)));
+    if (on) { rig.hand.updateWorldMatrix(true, false); rig.hand.getWorldPosition(_tv); rig.torso.worldToLocal(_tv); }
+    P.tether.forEach((sp, i) => {
+      const t = (i + 1) / (P.tether.length + 1);
+      if (on) { sp.position.lerpVectors(a, _tv, t); sp.position.y -= Math.sin(t * Math.PI) * 0.04; }
+      sp.material.opacity = on ? (0.3 + 0.25 * Math.sin(T * 6 - i * 0.9)) * (0.5 + 0.5 * Math.sin(t * Math.PI)) : 0;
+    });
+  }
   // Held while gliding, the weapon streams back with the wind rather than swinging forward like a pendulum
   if (held && !rig.attacking && rig.weaponRest && !P.wFly) rig.weapon.rotation.x = rig.weaponRest.x - rig.armR.rotation.x * 1.9;
   // Put away, the weapon floats upright beside the pillow, bobbing a beat behind it and slowly turning
@@ -17764,6 +17777,661 @@ function pillowFinalize(rig, dt) {
     r.head.rotation.set(r.head.rotation.x * 0.5, r.head.rotation.y * 0.45, r.head.rotation.z * 0.55);
     pillowFinalize(r, dt);
   };
+}
+
+// =============================================================================
+// THE SEWING BOX
+//   The pillow's weapons come out of a sewing box (its own weapons and loot; monsters keep theirs):
+//   - Sword: a needle blade, thread trailing from its eye, a thimble, spool or crossed-pin guard.
+//   - Dagger: a seam ripper, a long point and a short prong with a ball on its tip.
+//   - Greatsword: one blade of a pair of tailor's shears, held by its finger loop, a maker's star by the screw.
+//   - Axe: a pinking axe (zigzag edge) over a thread-spool collar; a hat pin through it when spiked.
+//   - Warhammer: a wooden thread spool with steel faces; pins stuck in the thread when spiked.
+//   - Staff: the reference's moon staff, the orb cradled in a crescent, a star hanging from a horn.
+//   - Wand: a knitting needle with a star bead and a few turns of yarn.
+//   - Glaive: a giant hat pin: a pearl for a butt, a ribbon bow under the blade.
+//   - Scythe: a crescent-moon blade (a sleepy face engraved on it) on a turned bedpost.
+//   They share a wheel pommel that is a button (a gem in it from rare), grips wrapped in cloth tape with the
+//   end fluttering, and thread in the rarity colour. Everything hangs from the same grip point and keeps the
+//   old weapons' lengths, so swings, trails and the rarity finery (weaponFinery) fit them as they did.
+// =============================================================================
+const SEW_GEO = {};
+/** A flat needle blade with its eye near the base (the eye is a real hole). Widths follow swordBlade's kinds. */
+function needleBladeGeo(kind, len, W) {
+  const key = 'needle' + [kind, len, W].join('|'); if (SEW_GEO[key]) return SEW_GEO[key];
+  const tip = u => u > 0.8 ? Math.pow((1 - u) / 0.2, 0.85) : 1;
+  const f = [
+    u => W * (0.62 + 0.38 * (1 - u)) * tip(u),
+    u => W * (0.7 + 0.5 * Math.sin(u * Math.PI * 0.95)) * (u > 0.86 ? (1 - u) / 0.14 : 1),
+    u => W * (0.95 + ((Math.floor(u * 10) % 2) ? 0.22 : 0) * (u > 0.2 ? 1 : 0)) * tip(u),
+    u => W * (u < 0.06 ? 0.8 : 1.25 - u * 0.25) * (u > 0.78 ? (1 - u) / 0.22 : 1),
+  ][kind % 4];
+  const s = new THREE.Shape(), n = kind === 2 ? 40 : 24;
+  s.moveTo(-f(0), 0);
+  for (let i = 1; i <= n; i++) { const u = i / n; s.lineTo(-Math.max(0.0005, f(u)), u * len); }
+  for (let i = n; i >= 0; i--) { const u = i / n; s.lineTo(Math.max(0.0005, f(u)), u * len); }
+  const eye = new THREE.Path(), ey = len * 0.1, eh = len * 0.055, ew = W * 0.26;
+  eye.absellipse(0, ey, ew, eh, 0, Math.PI * 2, true);
+  s.holes.push(eye);
+  const g = new THREE.ExtrudeGeometry(s, { depth: W * 0.22, bevelEnabled: true, bevelThickness: W * 0.12, bevelSize: W * 0.1, bevelSegments: 2, curveSegments: 12 });
+  g.translate(0, 0, -W * 0.11); g.computeVertexNormals();
+  return SEW_GEO[key] = g;
+}
+/** The axe's head with a pinking-shear zigzag along its edge. */
+function pinkingHeadGeo(big) {
+  const key = 'pink' + big; if (SEW_GEO[key]) return SEW_GEO[key];
+  const k = big ? 1.18 : 1, s = new THREE.Shape(), q = (a, c, b, t) => new THREE.Vector2((1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x, (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y);
+  s.moveTo(0.02, 0.06); s.lineTo(0.1, 0.05 * k); s.quadraticCurveTo(0.17, 0.12 * k, 0.25 * k, 0.2 * k);
+  const A = new THREE.Vector2(0.25 * k, 0.2 * k), C = new THREE.Vector2(0.34 * k, 0), B = new THREE.Vector2(0.25 * k, -0.19 * k), N = 14;
+  for (let i = 1; i <= N; i++) {
+    const t = i / N, p = q(A, C, B, t), p0 = q(A, C, B, t - 0.01), nx = -(p.y - p0.y), ny = p.x - p0.x, nl = Math.hypot(nx, ny) || 1;
+    const out = i < N && i % 2 ? 0.016 : 0; s.lineTo(p.x - nx / nl * out, p.y - ny / nl * out);
+  }
+  s.quadraticCurveTo(0.16, -0.1 * k, 0.1, -0.05 * k); s.lineTo(0.02, -0.05); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.01, bevelSegments: 1, curveSegments: 8 });
+  g.translate(0, 0, -0.015); g.computeVertexNormals();
+  return SEW_GEO[key] = g;
+}
+/** A crescent moon in the XY plane: a disc of radius R less a disc of radius r shifted by d toward +x (its horns point +x). */
+function crescentGeo(R, r, d, th) {
+  const key = 'moon' + [R, r, d, th].join('|'); if (SEW_GEO[key]) return SEW_GEO[key];
+  const xi = (R * R - r * r + d * d) / (2 * d), yi = Math.sqrt(Math.max(0, R * R - xi * xi)), a = Math.atan2(yi, xi), b = Math.atan2(yi, xi - d), s = new THREE.Shape(), n = 40;
+  for (let i = 0; i <= n; i++) { const t = a + (Math.PI * 2 - 2 * a) * i / n; i ? s.lineTo(Math.cos(t) * R, Math.sin(t) * R) : s.moveTo(Math.cos(t) * R, Math.sin(t) * R); }
+  for (let i = 0; i <= n; i++) { const t = (Math.PI * 2 - b) - (Math.PI * 2 - 2 * b) * i / n; s.lineTo(d + Math.cos(t) * r, Math.sin(t) * r); }
+  const g = new THREE.ExtrudeGeometry(s, { depth: th, bevelEnabled: true, bevelThickness: th * 0.4, bevelSize: th * 0.35, bevelSegments: 2, curveSegments: 12 });
+  g.translate(0, 0, -th / 2); g.computeVertexNormals(); g.userData.horn = [xi, yi];
+  return SEW_GEO[key] = g;
+}
+/** A turned bedpost: beads and coves along a slim shaft (lathed, so hdGeo smooths it). */
+function bedpostGeo(len) {
+  const key = 'post' + len; if (SEW_GEO[key]) return SEW_GEO[key];
+  const P = [[0.001, 0], [0.03, 0.005], [0.036, 0.03], [0.024, 0.06]], beads = [0.3, 0.62, 0.9];
+  for (let y = 0.08; y < len - 0.04; y += 0.03) { const b = beads.reduce((m, c) => Math.max(m, Math.exp(-(((y / len) - c) ** 2) / 0.0012)), 0); P.push([0.022 + b * 0.014, y]); }
+  P.push([0.034, len - 0.03], [0.03, len - 0.005], [0.001, len]);
+  return SEW_GEO[key] = new THREE.LatheGeometry(P.map(([r, y]) => new THREE.Vector2(r, y)), 12);
+}
+function buildSewnWeapon(item) {
+  const g = new THREE.Group(), type = item.icon, look = item.look || ItemLook.make(item), r = item.rarity | 0;
+  const metal = look.metal || ['#e8eef7', '#b8c2d6', '#6d7896'], gem = look.gem || '#5fd8ff', handle = look.handle || '#6b4226', accent = look.accent || '#c9a44a';
+  const el = look.element || 'none', glow = el !== 'none' ? ELEMENTS[el].colors[0] : look.glow || null;
+  const bladeM = glow && r >= 3 ? cmat(metal[0], { metalness: 0.85, roughness: 0.22, emissive: glow, emissiveIntensity: 0.28 }) : metalMat(metal[0], r === 0 ? 0.48 : 0.22);
+  const darkM = metalMat(metal[2], 0.4), midM = metalMat(metal[1], 0.3), accM = metalMat(accent, 0.3), gemM = glowC(gem, r >= 2 ? 1.5 : 0.9), runeM = glowC(glow || gem, 2.2);
+  const threadC = r >= 2 ? RARITIES[r].color : ['#c0392b', '#2f5fa8', '#3a7a3a'][look.variant | 0], threadM = look.runes ? glowC(threadC, 0.7) : cmat(threadC, { roughness: 0.7 });
+  const cloth = look.cloth || '#b8433f', tape = mixHex(cloth, '#e8dcc0', 0.35), wood = handle;
+  const pearl = cmat('#f6efe4', { roughness: 0.22, metalness: 0.12 }), ink = '#241820';
+  const tip = new THREE.Object3D(); g.add(tip); g.userData = { tip, element: el, glow, rarity: r, type, sewn: [] };
+  // Cloth tape, thread and ribbon ends that flutter (they hang by gravity: see animSewnWeapon)
+  const strip = (x, y, z, w, len, rows, c1, c2, ph) => { const p = pivot(g, x, y, z), m = heroStrip(p, w, len, rows, c1, c2, 0, 0, 0, ph); animStrip(m, 0.3, 0, false); g.userData.sewn.push({ p, m }); return m; };
+  // A wheel pommel that is a button (thread through its holes, or a gem in it from rare)
+  const button = (y, rad) => { const b = pillowButton(g, rad, r >= 2 ? accM : cmat(shade(wood, 1.3), { roughness: 0.4 }), r >= 2 ? threadC : '#efe2c4', r >= 2 ? gemM : null); b.position.y = y; return b; };
+  // A grip wrapped in cloth tape, the end left loose
+  const grip = (y0, len, rad, loose = true) => {
+    cpart(g, CYL12, wood, 0, y0 + len / 2, 0, rad, len, rad);
+    const tm = cmat(tape, { roughness: 0.88 });
+    for (let i = 0; i < 5; i++) cpart(g, TORUS2, tm, 0, y0 + 0.014 + i * (len - 0.028) / 4, 0, rad * 1.1, rad * 1.1, rad * 1.5).rotation.set(Math.PI / 2 + 0.32, 0, 0);
+    if (loose) strip(0, y0 + 0.012, rad * 0.9, 0.016, 0.09, 4, tape, shade(tape, 0.8), 0.6);
+  };
+  // Running stitch of light along a blade (its runes)
+  const runes = (x, y0, y1, z, n) => { for (let i = 0; i < n; i++) for (const sz of [1, -1]) cpart(g, BOXC, runeM, x, lerp(y0, y1, (i + 0.5) / n), sz * z, 0.007, (y1 - y0) / n * 0.55, 0.004).castShadow = false; };
+  switch (type) {
+    case 'sword': {
+      const len = 0.72, W = 0.042, gy = 0.15, guard = look.guard | 0;
+      grip(-0.06, 0.2, 0.022); button(-0.085, 0.036);
+      if (guard === 0) {   // a thimble for a cup guard, dimpled, with a rolled rim
+        cpart(g, new THREE.LatheGeometry([[0.001, 0.064], [0.03, 0.06], [0.044, 0.045], [0.05, 0.012], [0.052, 0]].map(([x, y]) => new THREE.Vector2(x, y)), 16), accM, 0, gy - 0.035, 0, 1, 1, 1);
+        cpart(g, TORUS2, accM, 0, gy - 0.035, 0, 0.052, 0.052, 0.06).rotation.x = Math.PI / 2;
+        for (let j = 0; j < 3; j++) for (let i = 0; i < 12; i++) { const a = (i + j * 0.5) / 12 * Math.PI * 2, rr = [0.049, 0.046, 0.038][j]; cpart(g, SPHL, darkM, Math.cos(a) * rr, gy - 0.028 + j * 0.016, Math.sin(a) * rr, 0.004, 0.004, 0.004).castShadow = false; }
+      } else if (guard === 1) {   // a thread spool across the blade
+        const sp = pivot(g, 0, gy - 0.01, 0); sp.rotation.z = Math.PI / 2;
+        cpart(sp, CYL12, threadM, 0, 0, 0, 0.026, 0.17, 0.026);
+        for (const y of [-0.095, 0.095]) cpart(sp, CYL12, wood, 0, y, 0, 0.038, 0.016, 0.038);
+        for (let i = 0; i < 5; i++) cpart(sp, TORUS2, cmat(shade(threadC, 0.75), { roughness: 0.7 }), 0, -0.064 + i * 0.032, 0, 0.026, 0.026, 0.04).rotation.x = Math.PI / 2;
+      } else {   // two sewing pins crossed through a collar, pearl heads out
+        cpart(g, CYL12, accM, 0, gy - 0.01, 0, 0.024, 0.04, 0.024);
+        for (const sx of [-1, 1]) { const p = cpart(g, CYL12, midM, sx * 0.07, gy + 0.005, 0, 0.0045, 0.16, 0.0045); p.rotation.z = sx * (Math.PI / 2 - 0.35); cpart(g, SPHL, r >= 2 ? gemM : pearl, sx * 0.144, gy + 0.032, 0, 0.016, 0.016, 0.016); }
+      }
+      cpart(g, needleBladeGeo(look.blade | 0, len, W), bladeM, 0, gy + 0.015, 0, 1, 1, 1);
+      // Thread through the eye: a loop round it and a length trailing in the wind
+      const ey = gy + 0.015 + len * 0.1;
+      cpart(g, TORUS2, threadM, 0, ey - len * 0.035, 0, 0.012, 0.012, 0.022).rotation.y = Math.PI / 2;
+      strip(0, ey - len * 0.045, 0.012, 0.0065, 0.28, 8, threadC, shade(threadC, 0.7), 1.3);
+      if (look.runes) runes(0, gy + 0.2, gy + len * 0.78, W * 0.24, 6);
+      tip.position.set(0, gy + len * 0.95, 0); g.userData.mid = gy + len * 0.5; g.userData.len = gy + len;
+      break;
+    }
+    case 'dagger': {
+      // A seam ripper: a chunky handle, a steel shank, a long point and a short prong with a ball on it
+      cpart(g, new THREE.LatheGeometry([[0.001, -0.075], [0.022, -0.07], [0.027, -0.04], [0.024, 0.04], [0.02, 0.1], [0.012, 0.11]].map(([x, y]) => new THREE.Vector2(x, y)), 14), cmat(wood, { roughness: 0.35 }), 0, 0, 0, 1, 1, 1);
+      for (const y of [-0.03, 0.0, 0.03]) cpart(g, TORUS2, cmat(shade(wood, 0.7), { roughness: 0.4 }), 0, y, 0, 0.026, 0.026, 0.03).rotation.x = Math.PI / 2;
+      button(-0.085, 0.028);
+      cpart(g, CYL12, accM, 0, 0.115, 0, 0.016, 0.03, 0.016);
+      cpart(g, CYL12, midM, 0, 0.16, 0, 0.0075, 0.07, 0.0075);
+      const fork = cpart(g, new THREE.TorusGeometry(0.026, 0.0085, 6, 14, Math.PI), bladeM, 0, 0.222, 0, 1, 1, 1); fork.rotation.z = Math.PI;
+      const pt = cpart(g, swordBlade(0, 0.19, 0.016), bladeM, 0.026, 0.218, 0, 1, 1, 1); pt.rotation.z = -0.06;
+      const pr = cpart(g, CYL12, bladeM, -0.028, 0.262, 0, 0.0075, 0.08, 0.0075); pr.rotation.z = 0.08;
+      cpart(g, SPHL, r >= 2 ? gemM : cmat('#d8343c', { roughness: 0.3 }), -0.032, 0.307, 0, 0.017, 0.017, 0.017);
+      tip.position.set(0.04, 0.4, 0); g.userData.mid = 0.22; g.userData.len = 0.42;
+      break;
+    }
+    case 'greatsword': {
+      // One blade of a pair of tailor's shears, held by its finger loop
+      const len = 1.0, gy = 0.2, lm = cmat(wood, { roughness: 0.3 });
+      cpart(g, TORUS2, lm, 0, 0, 0, 0.062, 0.1, 0.09);
+      cpart(g, new THREE.TorusGeometry(0.03, 0.009, 6, 12, Math.PI * 1.2), lm, 0.05, -0.12, 0, 1, 1, 1).rotation.z = Math.PI * 0.9;   // the finger rest
+      cpart(g, roundBox(0.036, 0.1, 0.026, 0.01), lm, 0, 0.13, 0, 1, 1, 1);
+      const sh = new THREE.Shape(), W = 0.075;
+      sh.moveTo(-W * 0.35, 0); sh.lineTo(-W * 0.35, len * 0.92); sh.quadraticCurveTo(-W * 0.3, len, -W * 0.1, len);
+      sh.quadraticCurveTo(W * 0.5, len * 0.55, W, len * 0.08); sh.lineTo(W * 0.7, 0); sh.closePath();
+      const bg = new THREE.ExtrudeGeometry(sh, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.005, bevelSize: 0.005, bevelSegments: 2, curveSegments: 16 }); bg.translate(0, 0, -0.007);
+      cpart(g, bg, bladeM, 0, gy, 0, 1, 1, 1);
+      cpart(g, CYL12, midM, 0.005, gy + 0.02, 0, 0.034, 0.03, 0.034).rotation.x = Math.PI / 2;   // the pivot screw
+      if (r >= 1) cpart(g, OCT, gemM, 0.005, gy + 0.02, 0.018, 0.016, 0.02, 0.008); else cpart(g, BOXC, darkM, 0.005, gy + 0.02, 0.016, 0.04, 0.007, 0.004).rotation.z = 0.6;
+      const mark = new THREE.Mesh(pillowStarGeo(0.013, 0.006, 0.002), darkM); mark.position.set(0.012, gy + 0.12, 0.013); g.add(mark);   // the maker's star
+      if (look.runes) runes(0, gy + 0.18, gy + len * 0.8, 0.012, 7);
+      tip.position.set(-0.008, gy + len * 0.96, 0); g.userData.mid = gy + len * 0.5; g.userData.len = gy + len;
+      break;
+    }
+    case 'axe': {
+      const hy = 0.66, big = r >= 3;
+      cpart(g, CYL12, wood, 0, 0.3, 0, 0.026, 0.8, 0.026); grip(-0.1, 0.3, 0.027); button(-0.115, 0.032);
+      // A thread-spool collar under the head
+      for (const y of [0.49, 0.56]) cpart(g, CYL12, accM, 0, y, 0, 0.036, 0.012, 0.036);
+      cpart(g, CYL12, threadM, 0, 0.525, 0, 0.031, 0.06, 0.031);
+      cpart(g, roundBox(0.08, 0.15, 0.07, 0.02), darkM, 0, hy, 0, 1, 1, 1);
+      cpart(g, pinkingHeadGeo(big), midM, 0.02, hy, 0, 1, 1, 1);
+      if (look.double) { const m2 = cpart(g, pinkingHeadGeo(big), midM, -0.02, hy, 0, -1, 1, 1); m2.userData.mirror = true; }
+      if (look.spikes) { cpart(g, CYL12, midM, 0, hy + 0.12, 0, 0.005, 0.2, 0.005); cpart(g, SPHL, r >= 2 ? gemM : pearl, 0, hy + 0.225, 0, 0.018, 0.018, 0.018); }   // a hat pin through the head
+      cpart(g, BOXC, accM, 0, hy, 0, 0.1, 0.03, 0.075);
+      if (look.runes) for (const y of [-0.05, 0.05]) cpart(g, BOXC, runeM, 0.14, hy + y, 0.03, 0.025, 0.025, 0.01).castShadow = false;
+      tip.position.set(0.28, hy, 0); g.userData.mid = hy; g.userData.len = hy + 0.2;
+      break;
+    }
+    case 'hammer': {
+      // A wooden thread spool for a head: steel faces on the flanges, thread wound in the middle
+      const hy = 0.78;
+      cpart(g, CYL12, wood, 0, 0.32, 0, 0.027, 0.84, 0.027); grip(-0.1, 0.32, 0.028); button(-0.115, 0.034);
+      const sp = pivot(g, 0, hy, 0); sp.rotation.z = Math.PI / 2;
+      cpart(sp, CYL12, shade(wood, 1.1), 0, 0, 0, 0.05, 0.3, 0.05);
+      cpart(sp, CYL12, threadM, 0, 0, 0, 0.078, 0.22, 0.078);
+      for (let i = 0; i < 6; i++) cpart(sp, TORUS2, look.runes ? runeM : cmat(shade(threadC, 0.72), { roughness: 0.7 }), 0, -0.09 + i * 0.036, 0, 0.078, 0.078, 0.05).rotation.x = Math.PI / 2;
+      for (const y of [-0.13, 0.13]) { cpart(sp, CYL12, shade(wood, 1.2), 0, y, 0, 0.105, 0.04, 0.105); cpart(sp, TORUS2, accM, 0, y, 0, 0.105, 0.105, 0.09).rotation.x = Math.PI / 2; cpart(sp, CYL12, midM, 0, y * 1.2, 0, 0.088, 0.018, 0.088); }
+      strip(0.03, hy - 0.076, 0.02, 0.006, 0.2, 6, threadC, shade(threadC, 0.7), 2.1);   // the loose end of the thread
+      if (look.spikes) for (let i = 0; i < 6; i++) {   // pins stuck in the thread, pearl heads out
+        const a = i / 6 * Math.PI * 2 + 0.3, x = -0.07 + (i % 3) * 0.07, pn = pivot(g, x, hy, 0); pn.rotation.x = a;
+        cpart(pn, CYL12, midM, 0, 0.1, 0, 0.0035, 0.07, 0.0035); cpart(pn, SPHL, i % 2 ? pearl : gemM, 0, 0.14, 0, 0.013, 0.013, 0.013);
+      }
+      tip.position.set(0, hy, 0); g.userData.mid = hy; g.userData.len = hy + 0.12;
+      break;
+    }
+    case 'staff': {
+      // The moon staff: the orb cradled in a gold crescent, a star hanging from a horn
+      const s1 = cpart(g, CYL12, wood, 0, 0.22, 0, 0.026, 0.62, 0.026); s1.rotation.z = 0.03;
+      const s2 = cpart(g, CYL12, shade(wood, 1.1), 0.012, 0.72, 0, 0.024, 0.46, 0.024); s2.rotation.z = -0.04;
+      grip(0.3, 0.16, 0.028);
+      for (const y of [-0.08, 0.52, 0.94]) cpart(g, CYL12, accM, y > 0.9 ? 0.02 : 0.008, y, 0, 0.034, 0.035, 0.034);
+      cpart(g, CONE12, accM, 0, -0.13, 0, 0.022, 0.07, 0.022).rotation.x = Math.PI;
+      const cy = 1.1, moon = cpart(g, crescentGeo(0.14, 0.125, 0.04, 0.022), accM, 0.02, cy, 0, 1, 1, 1); moon.rotation.z = Math.PI / 2;
+      const orb = pivot(g, 0.02, cy + 0.035, 0); g.userData.orb = orb;
+      if (r >= 2) cpart(orb, OCT, gemM, 0, 0, 0, 0.055, 0.085, 0.055).userData.solo = true;
+      else cpart(orb, SPH3, gemM, 0, 0, 0, 0.055, 0.055, 0.055).userData.solo = true;
+      orb.add(glowSprite(gem, 0.55, 0.7));
+      if (r >= 2) {   // a star on a thread from the right horn
+        const [hx, hh] = crescentGeo(0.14, 0.125, 0.04, 0.022).userData.horn;
+        cpart(g, CYL12, threadM, 0.02 - hh, cy + hx - 0.035, 0, 0.0025, 0.07, 0.0025);
+        const st = new THREE.Mesh(pillowStarGeo(0.024, 0.011, 0.008), r >= 3 ? glowC(look.glow || '#ffd166', 1.2) : accM); st.position.set(0.02 - hh, cy + hx - 0.08, 0); g.add(st);
+      }
+      if (r >= 3) { const ring = cpart(orb, TORUS2, runeM, 0, 0, 0, 0.095, 0.095, 0.095); ring.userData.solo = true; ring.rotation.x = 1.2; g.userData.ring = ring; }
+      tip.position.set(0.02, cy + 0.035, 0); g.userData.mid = 1.0; g.userData.len = cy + 0.16;
+      break;
+    }
+    case 'wand': {
+      // A knitting needle: a stop knob, a few turns of yarn with its tail, and a star bead near the point
+      cpart(g, CYL12, wood, 0, 0.14, 0, 0.012, 0.4, 0.012);
+      cpart(g, CONE12, wood, 0, 0.375, 0, 0.012, 0.07, 0.012);
+      cpart(g, SPHL, accM, 0, -0.065, 0, 0.022, 0.014, 0.022); cpart(g, CYL12, accM, 0, -0.055, 0, 0.014, 0.012, 0.014);
+      const ym = cmat(cloth, { roughness: 0.95 });
+      for (let i = 0; i < 5; i++) cpart(g, TORUS2, ym, 0, 0.02 + i * 0.022, 0, 0.02, 0.02, 0.03).rotation.set(Math.PI / 2 + (i % 2 ? 0.35 : -0.35), 0, 0);
+      strip(0, 0.12, 0.016, 0.009, 0.12, 4, cloth, shade(cloth, 0.8), 0.4);
+      const orb = pivot(g, 0, 0.33, 0); g.userData.orb = orb;
+      const st = cpart(orb, pillowStarGeo(0.036, 0.016, 0.014), gemM, 0, 0, 0, 1, 1, 1); st.userData.solo = true;
+      orb.add(glowSprite(gem, 0.45, 0.8));
+      tip.position.set(0, 0.41, 0); g.userData.mid = 0.22; g.userData.len = 0.43;
+      break;
+    }
+    case 'spear': {
+      // A giant hat pin: a pearl for a butt, a steel shank, a ribbon bow under the blade
+      const hy = 1.08;
+      cpart(g, CYL12, midM, 0, 0.47, 0, 0.013, 1.2, 0.013); grip(0.08, 0.32, 0.018);
+      cpart(g, SPH3, r >= 2 ? gemM : pearl, 0, -0.15, 0, 0.042, 0.042, 0.042);
+      cpart(g, CYL12, accM, 0, -0.1, 0, 0.018, 0.02, 0.018);
+      cpart(g, CYL12, accM, 0, hy, 0, 0.034, 0.012, 0.034); cpart(g, TORUS2, accM, 0, hy, 0, 0.034, 0.034, 0.04).rotation.x = Math.PI / 2;
+      cpart(g, swordBlade(look.blade | 0, 0.42, 0.058), bladeM, 0, hy + 0.01, 0, 1, 1, 1);
+      cpart(g, OCT, gemM, 0, hy + 0.03, 0.022, 0.016, 0.022, 0.009);
+      const rb = look.trim || '#c93a4a', rbm = cmat(rb, { roughness: 0.6 });
+      for (const sx of [-1, 1]) { const lp = cpart(g, SPHL, rbm, sx * 0.03, hy - 0.05, 0, 0.03, 0.016, 0.008); lp.rotation.z = sx * 0.4; }
+      cpart(g, SPHL, rbm, 0, hy - 0.05, 0, 0.012, 0.012, 0.01);
+      strip(-0.008, hy - 0.056, 0.006, 0.012, 0.13, 4, rb, shade(rb, 0.75), 0.2); strip(0.008, hy - 0.056, 0.006, 0.012, 0.11, 4, rb, shade(rb, 0.75), 2.4);
+      tip.position.set(0, hy + 0.4, 0); g.userData.mid = hy; g.userData.len = hy + 0.45;
+      break;
+    }
+    case 'scythe': {
+      // A crescent moon for a blade, on a turned bedpost; a sleepy face engraved on the moon
+      const hy = 1.04;
+      cpart(g, bedpostGeo(1.16), wood, 0, -0.12, 0, 1, 1, 1);
+      grip(0.02, 0.16, 0.026, false); grip(0.44, 0.12, 0.026);
+      cpart(g, roundBox(0.07, 0.1, 0.07, 0.02), darkM, 0, hy, 0, 1, 1, 1);
+      const R = 0.3, rr = 0.27, d = 0.1, th = 0.6, geo = crescentGeo(R, rr, d, 0.012), [hx, hh] = geo.userData.horn;
+      // Horns point -x once turned (a crescent opening toward the snath), then tilted so the lower horn swings out
+      const up = new THREE.Vector2(-hx, hh).rotateAround(new THREE.Vector2(), th), lo = new THREE.Vector2(-hx, -hh).rotateAround(new THREE.Vector2(), th);
+      const cx = -up.x, cyy = hy + 0.04 - up.y, blade = cpart(g, geo, bladeM, cx, cyy, 0, 1, 1, 1); blade.rotation.z = Math.PI + th;
+      const fp = new THREE.Vector2(R - 0.07, 0).rotateAround(new THREE.Vector2(), th);   // the moon's face, on its broadest part
+      for (const sz of [1, -1]) {
+        const eye = cpart(g, new THREE.TorusGeometry(0.017, 0.0035, 4, 10, Math.PI), ink, cx + fp.x - 0.012, cyy + fp.y + 0.02, sz * 0.0125, 1, 1, 1); eye.rotation.set(0, sz < 0 ? Math.PI : 0, Math.PI + th); eye.castShadow = false;
+        const sm = cpart(g, new THREE.TorusGeometry(0.012, 0.003, 4, 10, Math.PI), ink, cx + fp.x + 0.004, cyy + fp.y - 0.02, sz * 0.0125, 1, 1, 1); sm.rotation.set(0, sz < 0 ? Math.PI : 0, Math.PI + th); sm.castShadow = false;
+      }
+      const st = new THREE.Mesh(pillowStarGeo(0.026, 0.011, 0.008), r >= 2 ? glowC(look.glow || '#ffd166', 1.2) : accM); st.position.set(cx + lo.x, cyy + lo.y, 0); g.add(st);
+      if (look.runes) for (const a of [-1.05, -0.8, 0.8, 1.05]) {   // glowing stitches along both horns
+        const v = new THREE.Vector2(-(R - 0.035), 0).rotateAround(new THREE.Vector2(), a).rotateAround(new THREE.Vector2(), Math.PI + th);
+        for (const sz of [1, -1]) cpart(g, BOXC, runeM, cx + v.x, cyy + v.y, sz * 0.011, 0.02, 0.008, 0.004).rotation.z = Math.atan2(v.y, v.x) + Math.PI / 2;
+      }
+      tip.position.set(cx + lo.x, cyy + lo.y, 0); g.userData.mid = hy - 0.1; g.userData.len = hy + 0.1;
+      break;
+    }
+    default: tip.position.set(0, 0.05, 0); g.userData.len = 0.1; break;
+  }
+  weaponFinery(g, { type, look, r, glow, tier: item.tier });   // no item: the forged weapons' leather bands and fullers (weaponDetail) stay off
+  heroHiRes(g, { skin: '#f1c7a1' }, Math.min(4, r));
+  if (r >= 3) { const a = glowSprite(glow || RARITIES[r].color, 0.9, 0.22); a.position.y = g.userData.mid || 0.4; a.scale.set(0.5, 1.1, 1); g.add(a); g.userData.aura = a; }
+  mergeRig(g);
+  return g;
+}
+const SEWN = { sword: 1, dagger: 1, greatsword: 1, axe: 1, hammer: 1, staff: 1, wand: 1, spear: 1, scythe: 1 };
+{
+  // The pillow's weapons (and loot) come from the sewing box; monsters and guardians keep their own
+  const baseBuildW = buildWeapon;
+  buildWeapon = function (item) { return item && item.uid && SEWN[item.icon] ? buildSewnWeapon(item) : baseBuildW(item); };
+}
+/** Tape ends, thread and ribbons on a sewn weapon hang by gravity and stream back when it moves. */
+const _sq = new THREE.Quaternion(), _sq2 = new THREE.Quaternion();
+function animSewnWeapon(w, root, T, moving, attacking) {
+  const S = w.userData.sewn; if (!S || !S.length) return;
+  w.userData.sFlare = lerp(w.userData.sFlare || 0.2, 0.15 + (moving ? 0.5 : 0) + (attacking ? 1 : 0), 0.12);
+  for (const s of S) {
+    s.p.parent.updateWorldMatrix(true, false); s.p.parent.getWorldQuaternion(_sq); root.getWorldQuaternion(_sq2);
+    s.p.quaternion.copy(_sq.invert().multiply(_sq2));
+    animStrip(s.m, w.userData.sFlare, T, moving || attacking);
+  }
+}
+{
+  const baseExtrasSw = animHeroExtras;
+  animHeroExtras = function (rig, dt, moving, T, speed) {
+    baseExtrasSw(rig, dt, moving, T, speed);
+    if (rig.weapon) animSewnWeapon(rig.weapon, rig.root, T, moving, !!rig.attacking);
+  };
+}
+
+// ---------------------------------------------------------------- armour on the ground: a folded bundle
+// Armour dropped on the ground is folded up and tied with a ribbon in the rarity colour, in its own fabric:
+// the pillowcase's pattern, leather with its belt, mail under a tabard, padding under a plate, a quilt.
+{
+  const baseBPArmor = buildPickup;
+  buildPickup = function (kind, item) {
+    const o = baseBPArmor(kind, item);
+    if (kind !== 'item' || !item || item.kind !== 'armor') return o;
+    for (const c of [...o.spin.children]) if (!c.isSprite) o.spin.remove(c);
+    const L = item.look || ItemLook.make(item), R = item.rarity | 0, type = item.icon, b = pivot(o.spin, 0, -0.1, 0); b.rotation.set(0.28, 0.4, 0.1);
+    const mat = (c, extra = {}) => patchMaterial(new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.85 }, extra)), { cutY: 9 });
+    const tiled = (tex, k) => { const t = tex.clone(); t.needsUpdate = true; t.repeat.set(k, k); return t; };
+    const cloth = L.cloth || '#3f74b8', rb = RARITIES[R].color, M = L.metal;
+    let low = mat(PIL_CREAM), top = mat(PIL_CREAM);
+    if (type === 'tunic') { const pat = [null, 'ticking', 'dots'][(L.variant | 0) % 3], tex = pat === 'ticking' ? pillowPattern('ticking', '#f6efe0', mixHex(cloth, '#ffffff', 0.12)) : pat === 'dots' ? pillowPattern('dots', mixHex(PIL_CREAM, cloth, 0.62), '#f8f1e2') : null; low = top = tex ? mat('#ffffff', { map: tiled(tex, 1.5) }) : mat(mixHex(PIL_CREAM, cloth, 0.7)); }
+    else if (type === 'leather') { low = mat(mixHex('#7a4e2c', cloth, 0.22), { roughness: 0.62 }); top = mat(PIL_CREAM); }
+    else if (type === 'chain') { low = mat(M[0], { map: tiled(mailTex(), 1), metalness: 0.45, roughness: 0.45 }); top = mat(cloth); }
+    else if (type === 'plate') { low = mat('#d9c8a4'); top = mat(PIL_CREAM); }
+    else if (type === 'robe') { low = top = mat('#ffffff', { map: tiled(pillowPattern('quilt', shade(cloth, 0.72), R >= 2 ? '#f2cf6e' : shade(cloth, 1.0)), 1.2) }); }
+    cpart(b, roundBox(0.34, 0.055, 0.26, 0.024), low, 0, 0, 0, 1, 1, 1);
+    const t = cpart(b, roundBox(0.31, 0.05, 0.23, 0.022), top, 0.01, 0.052, -0.006, 1, 1, 1); t.rotation.y = 0.08;
+    cpart(b, CYL12, top, -0.16, 0.026, 0, 0.028, 0.23, 0.028).rotation.x = Math.PI / 2;   // the folded edge
+    if (type === 'leather') { cpart(b, BOXC, '#3e2818', 0.05, 0.08, 0, 0.05, 0.012, 0.25); cpart(b, roundBox(0.045, 0.012, 0.04, 0.006), metalMat('#e6c35c', 0.3), 0.05, 0.088, 0.06, 1, 1, 1); }
+    if (type === 'plate') { cpart(b, DOME, metalMat(M[0], 0.28), 0.01, 0.075, 0, 0.13, 0.045, 0.1); for (const x of [-0.08, 0.1]) cpart(b, SPHL, metalMat('#e6c35c', 0.3), x, 0.085, 0.05, 0.01, 0.01, 0.01); }
+    if (type === 'chain' && L.emblem) cpart(b, OCT, L.glow ? glowC(L.trim, 1) : metalMat('#e6c35c'), 0.02, 0.083, 0, 0.03, 0.01, 0.04);
+    if (type === 'robe') { const st = new THREE.Mesh(pillowStarGeo(0.03, 0.013, 0.008), metalMat('#f4c95d', 0.3)); st.position.set(0.04, 0.083, 0.02); st.rotation.x = -Math.PI / 2; b.add(st); }
+    // The ribbon, round both ways and tied in a bow
+    const rm = cmat(rb, { roughness: 0.55 }), y = 0.079;
+    cpart(b, BOXC, rm, 0.01, y, 0, 0.33, 0.012, 0.026); cpart(b, BOXC, rm, -0.06, y, 0, 0.026, 0.012, 0.25);
+    for (const sx of [-1, 1]) { const lp = cpart(b, SPHL, rm, -0.06 + sx * 0.03, y + 0.02, 0, 0.032, 0.014, 0.018); lp.rotation.z = sx * 0.5; const tl = cpart(b, BOXC, rm, -0.06 + sx * 0.022, y + 0.004, 0.05, 0.016, 0.006, 0.07); tl.rotation.y = sx * 0.5; }
+    cpart(b, SPHL, cmat(shade(rb, 0.8), { roughness: 0.55 }), -0.06, y + 0.02, 0, 0.014, 0.013, 0.014);
+    if (R >= 3 && L.glow) { const s2 = glowSprite(L.glow, 0.6, 0.35); s2.position.y = 0.05; o.spin.add(s2); }
+    return o;
+  };
+}
+
+// ---------------------------------------------------------------- icons from the sewing box
+// The bag's icons match what the pillow wears: the sewn weapons; armour shown on a little pillow (with the
+// hat, hood or helm it comes with, and its face peeking out); an earring on an ear corner, a brooch on its
+// safety pin, a keychain. Every icon is drawn at twice the size and shown smooth, and the shadow is cast
+// once, under the finished drawing, rather than under each part.
+const SEW_ICON = {
+  ink: '#241820', pearl: '#f6efe4',
+  circle(g, x, y, r) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); },
+  gem(g, x, y, s, c) {
+    g.fillStyle = c; g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s * 0.85, y); g.lineTo(x, y + s); g.lineTo(x - s * 0.85, y); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.moveTo(x, y - s); g.lineTo(x - s * 0.85, y); g.lineTo(x, y); g.closePath(); g.fill();
+  },
+  star(g, x, y, r, c, rot = 0) { g.fillStyle = c; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + rot + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fill(); },
+  button(g, x, y, r, face, thread, gem) {
+    g.fillStyle = shade(face, 0.68); this.circle(g, x, y, r); g.fill();
+    g.fillStyle = face; this.circle(g, x - r * 0.05, y - r * 0.05, r * 0.78); g.fill();
+    if (gem) { this.gem(g, x, y, r * 0.55, gem); return; }
+    g.fillStyle = this.ink; for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { this.circle(g, x + a * r * 0.3, y + b * r * 0.3, r * 0.12); g.fill(); }
+    g.strokeStyle = thread; g.lineWidth = r * 0.2; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(x - r * 0.3, y - r * 0.3); g.lineTo(x + r * 0.3, y + r * 0.3); g.moveTo(x + r * 0.3, y - r * 0.3); g.lineTo(x - r * 0.3, y + r * 0.3); g.stroke();
+  },
+  /** Crescent outline points (local): a disc of radius R less one of radius r shifted d toward +x. */
+  crescent(R, r, d, n = 20) {
+    const xi = (R * R - r * r + d * d) / (2 * d), yi = Math.sqrt(Math.max(0, R * R - xi * xi)), a = Math.atan2(yi, xi), b = Math.atan2(yi, xi - d), P = [];
+    for (let i = 0; i <= n; i++) { const t = a + (Math.PI * 2 - 2 * a) * i / n; P.push([Math.cos(t) * R, Math.sin(t) * R]); }
+    for (let i = 0; i <= n; i++) { const t = (Math.PI * 2 - b) - (Math.PI * 2 - 2 * b) * i / n; P.push([d + Math.cos(t) * r, Math.sin(t) * r]); }
+    return { P, horn: [xi, yi] };
+  },
+  poly(g, P) { g.beginPath(); P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); },
+  /** A weapon from the sewing box, grip at the origin, pointing along +x (units: the old icons', about 3 cm). */
+  weapon(g, item, t = 0.4) {
+    const L = item.look, m = L.metal, r = item.rarity | 0, type = item.icon, wood = L.handle, acc = L.accent, gemC = L.gem, cloth = L.cloth || '#b8433f';
+    const tape = mixHex(cloth, '#e8dcc0', 0.35), thread = r >= 2 ? RARITIES[r].color : ['#c0392b', '#2f5fa8', '#3a7a3a'][L.variant | 0], pulse = 0.75 + 0.25 * Math.sin(t * 4), ink = this.ink;
+    g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
+    const grip = (x0, x1, h) => {
+      g.fillStyle = wood; g.fillRect(x0, -h / 2, x1 - x0, h);
+      g.fillStyle = tape; for (let x = x0; x < x1 - 0.8; x += 2.3) { g.beginPath(); g.moveTo(x, -h / 2); g.lineTo(x + 1.1, -h / 2); g.lineTo(x + 2.1, h / 2); g.lineTo(x + 1, h / 2); g.closePath(); g.fill(); }
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(x0, h * 0.12, x1 - x0, h * 0.38);
+    };
+    const tapeEnd = (x, y) => { g.strokeStyle = tape; g.lineWidth = 1.3; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x - 1.5, y + 3, x - 3.8, y + 3.6); g.stroke(); };
+    const pommel = (x, rad) => this.button(g, x, 0, rad, r >= 2 ? acc : shade(wood, 1.35), r >= 2 ? thread : '#efe2c4', r >= 2 ? gemC : null);
+    const runes = (x0, x1, n) => { if (!L.runes) return; g.fillStyle = L.glow || gemC; for (let i = 0; i < n; i++) g.fillRect(lerp(x0, x1, (i + 0.25) / n), -0.35, (x1 - x0) / n * 0.5, 0.7); };
+    if (L.glow) EquipArt.glowAt(g, 14, 0, 16, L.glow, 0.5 * pulse);
+    if (type === 'sword') {
+      const x0 = 3, B = 24, bw = 2.5, k = L.blade | 0, tip = u => u > 0.8 ? (1 - u) / 0.2 : 1;
+      const f = [u => bw * (0.62 + 0.38 * (1 - u)) * tip(u), u => bw * (0.7 + 0.5 * Math.sin(u * 3)) * (u > 0.86 ? (1 - u) / 0.14 : 1), u => bw * (0.95 + (Math.floor(u * 10) % 2 && u > 0.2 ? 0.22 : 0)) * tip(u), u => bw * (u < 0.06 ? 0.8 : 1.25 - u * 0.25) * (u > 0.78 ? (1 - u) / 0.22 : 1)][k % 4];
+      grip(-6.2, 0, 3); tapeEnd(-6, 1.4); pommel(-8.6, 3);
+      g.beginPath(); g.moveTo(x0, -f(0)); for (let i = 1; i <= 24; i++) g.lineTo(x0 + B * i / 24, -Math.max(0.05, f(i / 24))); for (let i = 24; i >= 0; i--) g.lineTo(x0 + B * i / 24, Math.max(0.05, f(i / 24))); g.closePath();
+      g.fillStyle = m[0]; g.fill(); g.save(); g.clip(); g.fillStyle = m[1]; g.fillRect(x0, 0.2, B, 6); g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(x0 + 1, -bw - 1, B * 0.72, 1.4); g.restore();
+      // The eye, the thread through it, and its length trailing back past the grip
+      g.fillStyle = 'rgba(26,18,28,.85)'; g.beginPath(); g.ellipse(x0 + 3, 0, 1.8, 0.6, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = thread; g.lineWidth = 0.8; g.beginPath(); g.ellipse(x0 + 1.9, 0, 1.3, 0.9, 0, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(x0 + 1.2, 0.6); g.bezierCurveTo(x0 - 1.5, 5, -3, 3, -6.5, 6.2); g.stroke();
+      runes(x0 + 6, x0 + B - 5, 5);
+      const gd = L.guard | 0;
+      if (gd === 0) {   // thimble
+        g.fillStyle = acc; g.beginPath(); g.moveTo(-0.8, -4.2); g.lineTo(2, -4); g.quadraticCurveTo(3.8, -3.6, 3.8, 0); g.quadraticCurveTo(3.8, 3.6, 2, 4); g.lineTo(-0.8, 4.2); g.closePath(); g.fill();
+        g.fillStyle = 'rgba(0,0,0,.3)'; for (let x = 0.3; x < 3.2; x += 1.2) for (let y = -2.8; y <= 2.9; y += 1.4) { this.circle(g, x, y, 0.35); g.fill(); }
+        g.fillStyle = shade(acc, 0.75); g.fillRect(-1.2, -4.5, 1, 9);
+      } else if (gd === 1) {   // spool
+        g.fillStyle = thread; g.fillRect(0.2, -5.2, 2.4, 10.4); g.strokeStyle = shade(thread, 0.7); g.lineWidth = 0.4; for (let y = -4.6; y < 5; y += 1.1) { g.beginPath(); g.moveTo(0.2, y); g.lineTo(2.6, y); g.stroke(); }
+        g.fillStyle = shade(wood, 1.3); g.fillRect(-0.3, -6.6, 3.4, 1.5); g.fillRect(-0.3, 5.1, 3.4, 1.5);
+      } else {   // crossed pins
+        g.strokeStyle = m[1]; g.lineWidth = 0.9; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(-2.2, s * 6.4); g.lineTo(4.4, -s * 6.4); g.stroke(); g.fillStyle = r >= 2 ? gemC : this.pearl; this.circle(g, -2.5, s * 6.9, 1.6); g.fill(); }
+        g.fillStyle = acc; g.fillRect(0, -1.9, 2.4, 3.8);
+      }
+    } else if (type === 'dagger') {
+      pommel(-8.4, 2.5);
+      g.fillStyle = wood; g.beginPath(); g.moveTo(-6.8, -1.8); g.quadraticCurveTo(-7.4, 0, -6.8, 1.8); g.lineTo(1.8, 1.5); g.lineTo(1.8, -1.5); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(-6.2, -1.3, 7.5, 0.7);
+      g.strokeStyle = shade(wood, 0.65); g.lineWidth = 0.6; for (const x of [-4.4, -2.8, -1.2]) { g.beginPath(); g.moveTo(x, -1.7); g.lineTo(x, 1.7); g.stroke(); }
+      g.fillStyle = acc; g.fillRect(1.8, -1.4, 1.5, 2.8);
+      g.fillStyle = m[1]; g.fillRect(3.3, -0.55, 4.2, 1.1);
+      g.strokeStyle = m[0]; g.lineWidth = 1; g.beginPath(); g.arc(8.3, 0, 1.4, Math.PI / 2, Math.PI * 1.5); g.stroke();
+      g.fillStyle = m[0]; g.beginPath(); g.moveTo(8.3, 0.8); g.lineTo(14, 0.65); g.lineTo(17, 1.45); g.lineTo(14, 2.1); g.lineTo(8.3, 2); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(8.3, -1.4); g.lineTo(11.6, -1.55); g.stroke();
+      g.fillStyle = r >= 2 ? gemC : '#d8343c'; this.circle(g, 12.4, -1.6, 1.45); g.fill(); g.fillStyle = 'rgba(255,255,255,.7)'; this.circle(g, 12, -2, 0.45); g.fill();
+    } else if (type === 'greatsword') {
+      g.strokeStyle = wood; g.lineWidth = 2.3; g.beginPath(); g.ellipse(-6.4, 0, 5.4, 3.4, 0, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 0.6; g.beginPath(); g.ellipse(-6.4, -0.6, 5.2, 2.6, 0, Math.PI * 1.1, Math.PI * 1.8); g.stroke();
+      g.strokeStyle = wood; g.lineWidth = 1.4; g.beginPath(); g.arc(-12, 2.6, 1.4, -0.4, Math.PI * 1.3); g.stroke();
+      g.fillStyle = wood; g.fillRect(-1.1, -1.1, 4.6, 2.2);
+      g.beginPath(); g.moveTo(3.4, -1.3); g.lineTo(34.5, -1.3); g.quadraticCurveTo(36.8, -1.2, 37.3, -0.2); g.quadraticCurveTo(22, 1.6, 4.9, 3.5); g.lineTo(3.4, 2.4); g.closePath();
+      g.fillStyle = m[0]; g.fill(); g.save(); g.clip(); g.fillStyle = m[1]; g.fillRect(3, 0.6, 36, 4); g.fillStyle = 'rgba(255,255,255,.7)'; g.fillRect(4, -1.3, 29, 0.8); g.restore();
+      g.fillStyle = m[1]; this.circle(g, 5, 0.4, 1.8); g.fill(); g.strokeStyle = m[2]; g.lineWidth = 0.5; g.stroke();
+      if (r >= 1) this.gem(g, 5, 0.4, 1.2, gemC); else { g.strokeStyle = m[2]; g.lineWidth = 0.5; g.beginPath(); g.moveTo(4, -0.4); g.lineTo(6, 1.2); g.stroke(); }
+      this.star(g, 9.2, 0.1, 1, m[2]);
+      runes(12, 30, 5);
+    } else if (type === 'axe') {
+      const hx = 15;
+      g.fillStyle = wood; g.fillRect(-7, -1.5, 29, 3); grip(-7, 3, 3.2); tapeEnd(-6.8, 1.5); pommel(-8.8, 2.5);
+      g.fillStyle = acc; g.fillRect(11.6, -2.4, 0.8, 4.8); g.fillRect(13.4, -2.4, 0.8, 4.8); g.fillStyle = thread; g.fillRect(12.4, -2, 1, 4);
+      if (L.spikes) { g.strokeStyle = m[1]; g.lineWidth = 0.7; g.beginPath(); g.moveTo(hx + 6, 0); g.lineTo(31, 0); g.stroke(); g.fillStyle = r >= 2 ? gemC : this.pearl; this.circle(g, 31.8, 0, 1.8); g.fill(); }
+      for (const s of (L.double ? [1, -1] : [1])) {
+        const q = (a, c, b, u) => [(1 - u) * (1 - u) * a[0] + 2 * (1 - u) * u * c[0] + u * u * b[0], (1 - u) * (1 - u) * a[1] + 2 * (1 - u) * u * c[1] + u * u * b[1]];
+        const A = [hx + 7, -1.5 * s], Cc = [hx + 14, 5 * s], Bb = [hx + 11.5, 11.5 * s];
+        g.beginPath(); g.moveTo(hx, -1.5 * s); g.lineTo(A[0], A[1]);
+        for (let i = 1; i <= 10; i++) { const u = i / 10, p = q(A, Cc, Bb, u), p0 = q(A, Cc, Bb, u - 0.02), nx = p[1] - p0[1], ny = -(p[0] - p0[0]), nl = Math.hypot(nx, ny) || 1, o = i < 10 && i % 2 ? 1.1 * s : 0; g.lineTo(p[0] + nx / nl * o, p[1] + ny / nl * o); }
+        g.quadraticCurveTo(hx + 6, 8 * s, hx + 1, 4 * s); g.closePath();
+        g.fillStyle = m[1]; g.fill(); g.save(); g.clip(); g.fillStyle = m[0]; g.fillRect(hx, -13, 6, 26); g.restore();
+        if (L.runes) { g.fillStyle = L.glow || gemC; g.fillRect(hx + 3.5, 3.5 * s - 0.7, 1.4, 1.4); g.fillRect(hx + 5.5, 6.5 * s - 0.7, 1.4, 1.4); }
+      }
+      g.fillStyle = m[2]; g.fillRect(hx - 1, -2.7, 8, 5.4); g.fillStyle = acc; g.fillRect(hx + 1, -2.7, 1.3, 5.4);
+    } else if (type === 'hammer') {
+      g.fillStyle = wood; g.fillRect(-7, -1.6, 24.6, 3.2); grip(-7, 3, 3.4); tapeEnd(-6.8, 1.6); pommel(-8.8, 2.6);
+      const x0 = 17.4, x1 = 25;
+      if (L.spikes) { for (const [y, dy] of [[-4, -1.6], [0, 0], [4, 1.6]]) { g.strokeStyle = m[1]; g.lineWidth = 0.6; g.beginPath(); g.moveTo(x1 - 1, y); g.lineTo(x1 + 3.6, y + dy); g.stroke(); g.fillStyle = y ? this.pearl : gemC; this.circle(g, x1 + 4, y + dy * 1.1, 1.2); g.fill(); } }
+      g.fillStyle = m[1]; g.fillRect(x0 + 0.8, -10, x1 - x0 - 1.6, 1.5); g.fillRect(x0 + 0.8, 8.5, x1 - x0 - 1.6, 1.5);
+      g.fillStyle = shade(wood, 1.3); g.fillRect(x0, -8.6, x1 - x0, 1.9); g.fillRect(x0, 6.7, x1 - x0, 1.9);
+      g.fillStyle = acc; g.fillRect(x0, -8.7, x1 - x0, 0.5); g.fillRect(x0, 8.2, x1 - x0, 0.5);
+      g.fillStyle = L.runes ? mixHex(thread, '#ffffff', 0.2) : thread; g.fillRect(x0 + 0.5, -6.7, x1 - x0 - 1, 13.4);
+      g.strokeStyle = shade(thread, 0.7); g.lineWidth = 0.45; for (let y = -6; y < 6.6; y += 1.3) { g.beginPath(); g.moveTo(x0 + 0.5, y); g.lineTo(x1 - 0.5, y + 0.4); g.stroke(); }
+      g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(x0 + 1.2, -6.7, 1.6, 13.4);
+      g.strokeStyle = thread; g.lineWidth = 0.6; g.beginPath(); g.moveTo(x1 - 0.8, 4); g.quadraticCurveTo(x1 + 2, 6, x1 + 0.5, 10.5); g.stroke();
+    } else if (type === 'staff') {
+      g.fillStyle = wood; g.fillRect(-9, -1.4, 38, 2.8); g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(-9, -1.4, 38, 0.8);
+      grip(9, 14, 3.3); tapeEnd(9.2, 1.6);
+      g.fillStyle = acc; for (const x of [-9, 5, 28.4]) g.fillRect(x, -1.9, 1.7, 3.8);
+      g.beginPath(); g.moveTo(-9, -1.2); g.lineTo(-11.8, 0); g.lineTo(-9, 1.2); g.fill();
+      const C = this.crescent(6.6, 5.9, 2.2); this.poly(g, C.P.map(([x, y]) => [34.8 + x, y]));
+      g.fillStyle = acc; g.fill(); g.strokeStyle = shade(acc, 0.7); g.lineWidth = 0.5; g.stroke();
+      EquipArt.glowAt(g, 37, 0, 12, gemC, 0.75 * pulse);
+      if (r >= 2) this.gem(g, 37, 0, 3.6, gemC); else { g.fillStyle = gemC; this.circle(g, 37, 0, 3.1); g.fill(); g.fillStyle = 'rgba(255,255,255,.7)'; this.circle(g, 36, -1.1, 0.9); g.fill(); }
+      if (r >= 2) { const [hx, hy] = C.horn; g.strokeStyle = thread; g.lineWidth = 0.4; g.beginPath(); g.moveTo(34.8 + hx, -hy); g.lineTo(34.8 + hx - 2.4, -hy - 1.6); g.stroke(); this.star(g, 34.8 + hx - 3.4, -hy - 2.4, 1.9, r >= 3 ? '#ffe7a0' : acc); }
+    } else if (type === 'wand') {
+      g.fillStyle = wood; g.fillRect(-5, -0.9, 20, 1.8); g.beginPath(); g.moveTo(15, -0.9); g.lineTo(19, 0); g.lineTo(15, 0.9); g.fill();
+      g.fillStyle = acc; this.circle(g, -6, 0, 2.1); g.fill(); g.fillRect(-5, -1.2, 1, 2.4);
+      g.strokeStyle = cloth; g.lineWidth = 1.1; for (let i = 0; i < 5; i++) { g.beginPath(); g.ellipse(0.4 + i * 1.1, 0, 0.8, 2.1, i % 2 ? 0.35 : -0.35, 0, Math.PI * 2); g.stroke(); }
+      g.beginPath(); g.moveTo(5.4, 1.6); g.quadraticCurveTo(7, 4.5, 9.5, 5.2); g.stroke();
+      EquipArt.glowAt(g, 13.2, 0, 10, gemC, 0.8 * pulse); this.star(g, 13.2, 0, 3.8, gemC, 0.3);
+      g.fillStyle = 'rgba(255,255,255,.6)'; this.circle(g, 12.4, -1, 0.7); g.fill();
+    } else if (type === 'spear') {
+      g.fillStyle = m[1]; g.fillRect(-9, -0.8, 42, 1.6); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(-9, -0.8, 42, 0.5);
+      grip(3, 13, 2.6); tapeEnd(3.2, 1.3);
+      const pr = g.createRadialGradient(-12.2, -1, 0.3, -11.4, 0, 3.4); pr.addColorStop(0, '#ffffff'); pr.addColorStop(1, r >= 2 ? gemC : '#e8dccb');
+      g.fillStyle = pr; this.circle(g, -11.4, 0, 3.2); g.fill();
+      const rb = L.trim || '#c93a4a'; g.fillStyle = rb;
+      for (const s of [-1, 1]) { g.beginPath(); g.ellipse(30.4, s * 2.5, 1.3, 2.3, s * 0.3, 0, Math.PI * 2); g.fill(); }
+      g.strokeStyle = rb; g.lineWidth = 1; g.beginPath(); g.moveTo(30.4, 0); g.lineTo(27.2, 3.8); g.moveTo(30.4, 0); g.lineTo(27.6, -3.6); g.stroke();
+      g.fillStyle = shade(rb, 0.75); this.circle(g, 30.4, 0, 0.9); g.fill();
+      g.fillStyle = acc; g.fillRect(32.2, -2.1, 1.6, 4.2);
+      if (L.glow) EquipArt.glowAt(g, 40, 0, 10, L.glow, 0.6 * pulse);
+      g.beginPath(); g.moveTo(34, -3.2); g.quadraticCurveTo(40, -3.5, 46, 0); g.quadraticCurveTo(40, 3.5, 34, 3.2); g.closePath(); g.fillStyle = m[0]; g.fill();
+      g.fillStyle = m[2]; g.fillRect(34.5, -0.4, 8, 0.8); this.gem(g, 35.6, 0, 1.2, gemC);
+    } else if (type === 'scythe') {
+      g.fillStyle = wood; g.fillRect(-9, -1.3, 40, 2.6); for (const x of [1, 12.5, 24]) { g.beginPath(); g.ellipse(x, 0, 1.7, 2.1, 0, 0, Math.PI * 2); g.fill(); }
+      grip(-7.5, -2.5, 3); grip(14.5, 18.5, 3); tapeEnd(14.7, 1.5);
+      g.fillStyle = m[2]; g.fillRect(30.3, -2.2, 3, 4.4);
+      // The crescent blade, laid out as the model's: its upper horn at the bedpost's top, the lower horn the point
+      const K = 33.3, R = 0.3, rr = 0.27, d = 0.1, th = 0.6, hy = 1.04, C = this.crescent(R, rr, d), [hx, hh] = C.horn;
+      const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+      const up = rot(-hx, hh, th), lo = rot(-hx, -hh, th), cx = -up[0], cy = hy + 0.04 - up[1];
+      const toI = ([x, y]) => { const [a, b] = rot(x, y, Math.PI + th); return [(cy + b) * K, (cx + a) * K]; };
+      if (L.glow) EquipArt.glowAt(g, (cy + 0.05) * K, (cx + 0.1) * K, 14, L.glow, 0.6 * pulse);
+      this.poly(g, C.P.map(toI)); g.fillStyle = m[0]; g.fill(); g.strokeStyle = m[2]; g.lineWidth = 0.5; g.stroke();
+      const fp = toI([-(R - 0.07), 0]);
+      g.strokeStyle = ink; g.lineWidth = 0.6; g.beginPath(); g.arc(fp[0] + 0.8, fp[1] - 0.4, 0.8, 0.2, Math.PI - 0.2); g.stroke(); g.beginPath(); g.arc(fp[0] - 1, fp[1] + 0.6, 0.6, 0.2, Math.PI - 0.2); g.stroke();
+      const tp = [(cy + lo[1]) * K, (cx + lo[0]) * K]; this.star(g, tp[0], tp[1], 1.8, r >= 2 ? '#ffe7a0' : acc);
+    }
+    g.restore();
+  },
+  /** The pillow's outline (ears at the top corners, pinched sides), centred at (cx, cy). */
+  pillow(g, cx, cy, w, h) {
+    const Lx = cx - w / 2, Rx = cx + w / 2, T = cy - h / 2, B = cy + h / 2;
+    g.beginPath(); g.moveTo(Lx - 1.2, T - 1.6);
+    g.quadraticCurveTo(cx, T + 3.2, Rx + 1.2, T - 1.6);
+    g.quadraticCurveTo(Rx - 1.8, cy, Rx + 0.3, B - 2.6); g.quadraticCurveTo(Rx + 0.6, B + 0.6, Rx - 3, B + 0.4);
+    g.quadraticCurveTo(cx, B + 1.5, Lx + 3, B + 0.4); g.quadraticCurveTo(Lx - 0.6, B + 0.6, Lx - 0.3, B - 2.6);
+    g.quadraticCurveTo(Lx + 1.8, cy, Lx - 1.2, T - 1.6); g.closePath();
+  },
+  dashes(g, x0, y0, x1, y1, c, w = 0.7, on = 1.3, off = 1) { g.save(); g.strokeStyle = c; g.lineWidth = w; g.setLineDash([on, off]); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); g.restore(); },
+  /** Armour on a little pillow: its fabric or metal, its details, the headgear it comes with and the face. */
+  armor(g, item) {
+    const L = item.look, R = item.rarity | 0, type = item.icon, cream = PIL_CREAM, ink = this.ink, hg = pickHeadgear(item);
+    const thread = pillowThread(R, type, cream), cx = 24, cy = hg === 'hat' || hg === 'nightcap' ? 29.5 : hg ? 27 : 25.5, w = 33, h = 30, Lx = cx - w / 2, T = cy - h / 2, B = cy + h / 2;
+    if (L.glow) EquipArt.glowAt(g, 24, 26, 26, L.glow, 0.32);
+    const cloth = L.cloth, body = type === 'tunic' ? mixHex(cream, cloth, 0.7) : type === 'robe' ? mixHex(cream, cloth, 0.55) : cream;
+    const pat = type === 'tunic' ? [null, 'ticking', 'dots'][(L.variant | 0) % 3] : null;
+    this.pillow(g, cx, cy, w, h); g.fillStyle = pat === 'ticking' ? '#f6efe0' : pat === 'dots' ? mixHex(cream, cloth, 0.62) : body; g.fill();
+    g.save(); this.pillow(g, cx, cy, w, h); g.clip();
+    if (pat === 'ticking') { g.fillStyle = cloth; for (let x = Lx - 2; x < Lx + w + 2; x += 7) { g.fillRect(x, T - 3, 2.2, h + 6); g.fillRect(x + 3.6, T - 3, 0.6, h + 6); g.fillRect(x + 5, T - 3, 0.6, h + 6); } }
+    if (pat === 'dots') { g.fillStyle = '#f8f1e2'; for (let y = T - 2, j = 0; y < B + 3; y += 4.2, j++) for (let x = Lx - 2 + (j % 2) * 2.4; x < Lx + w + 2; x += 4.8) { this.circle(g, x, y, 0.95); g.fill(); } }
+    // Soft shading: light from the top left, the base in shadow
+    const sh = g.createLinearGradient(Lx, T, Lx + w, B); sh.addColorStop(0, 'rgba(255,255,255,.18)'); sh.addColorStop(0.55, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.24)');
+    g.fillStyle = sh; g.fillRect(Lx - 3, T - 3, w + 6, h + 6);
+    const metal = L.metal;
+    if (type === 'tunic') {
+      g.fillStyle = shade(pat ? cloth : body, pat ? 0.92 : 0.84); g.fillRect(Lx - 2, B - 4.6, w + 4, 3);
+      this.dashes(g, Lx, B - 3.1, Lx + w, B - 3.1, pillowThread(R, 'tunic', pat ? cloth : body));
+      if (R === 0) { const sc = mixHex(cream, CLOTH.tunic[((L.variant | 0) + 2) % 5], 0.55); g.fillStyle = sc; g.fillRect(cx + 4.5, cy + 3, 5, 4.4); g.strokeStyle = shade(sc, 0.5); g.lineWidth = 0.45; for (let i = 0; i < 3; i++) { const x = cx + 5 + i * 1.8; g.beginPath(); g.moveTo(x - 0.5, cy + 2.6); g.lineTo(x + 0.5, cy + 3.4); g.moveTo(x + 0.5, cy + 2.6); g.lineTo(x - 0.5, cy + 3.4); g.stroke(); } }
+      if (R >= 2) { this.star(g, cx - 7, cy + 5, 2.4, thread); g.save(); g.strokeStyle = thread; g.lineWidth = 0.45; g.setLineDash([0.9, 0.7]); this.circle(g, cx - 7, cy + 5.2, 3.6); g.stroke(); g.restore(); }
+      if (R >= 3) { g.fillStyle = '#fff8ec'; for (let x = Lx + 2; x < Lx + w - 1; x += 2.2) { g.beginPath(); g.arc(x, B - 1.4, 1.05, 0, Math.PI); g.fill(); } }
+    } else if (type === 'leather') {
+      const lc = mixHex('#7a4e2c', cloth, 0.22), st = R >= 2 ? thread : '#e9d8b4';
+      for (const [x, y] of [[Lx - 1, T - 1.5], [Lx + w + 1, T - 1.5], [Lx, B + 0.5], [Lx + w, B + 0.5]]) {
+        g.fillStyle = lc; this.circle(g, x, y, 8.4); g.fill();
+        g.strokeStyle = st; g.lineWidth = 0.45; for (let i = 0; i < 5; i++) { const a = Math.atan2(cy - y, cx - x) + (i - 2) * 0.3, px = x + Math.cos(a) * 7.4, py = y + Math.sin(a) * 7.4; g.beginPath(); g.moveTo(px - 0.6, py - 0.6); g.lineTo(px + 0.6, py + 0.6); g.moveTo(px + 0.6, py - 0.6); g.lineTo(px - 0.6, py + 0.6); g.stroke(); }
+        if (R >= 1) { g.fillStyle = R >= 1 ? '#e6c35c' : '#9a9aa2'; const a = Math.atan2(cy - y, cx - x); this.circle(g, x + Math.cos(a) * 4, y + Math.sin(a) * 4, 0.9); g.fill(); }
+      }
+      g.fillStyle = '#3e2818'; g.fillRect(Lx - 2, cy + 5.4, w + 4, 3.4); this.dashes(g, Lx, cy + 6, Lx + w, cy + 6, st, 0.4, 0.9, 0.7); this.dashes(g, Lx, cy + 8.2, Lx + w, cy + 8.2, st, 0.4, 0.9, 0.7);
+      g.fillStyle = R >= 1 ? '#e6c35c' : '#9a9aa2'; g.fillRect(cx + 3, cy + 4.6, 5, 5); g.fillStyle = '#3e2818'; g.fillRect(cx + 4.1, cy + 5.8, 2.8, 2.6); g.fillStyle = shade('#3e2818', 1.2); g.fillRect(cx + 9, cy + 5.8, 5, 2.6);
+    } else if (type === 'chain') {
+      g.fillStyle = metal[0]; g.fillRect(Lx - 2, cy + 1.5, w + 4, h); g.fillStyle = 'rgba(40,48,70,.45)'; for (let y = cy + 2; y < B + 2; y += 1.6) for (let x = Lx - 2 + ((y / 1.6) % 2) * 0.8; x < Lx + w + 2; x += 1.6) g.fillRect(x, y, 0.8, 0.8);
+      g.fillStyle = shade(mixHex('#7a4e2c', cloth, 0.22), 0.8); g.fillRect(Lx - 2, cy + 0.2, w + 4, 2.4); this.dashes(g, Lx, cy + 1.4, Lx + w, cy + 1.4, R >= 2 ? thread : '#e9d8b4', 0.4, 0.9, 0.7);
+      g.fillStyle = cloth; g.fillRect(cx - 4.2, cy + 1.2, 8.4, h); g.save(); g.strokeStyle = R >= 1 ? L.trim : shade(cloth, 0.6); g.lineWidth = 0.5; g.setLineDash([1, 0.8]); g.strokeRect(cx - 3.4, cy + 2, 6.8, h); g.restore();
+      if (L.emblem) EquipArt.emblem(g, cx, cy + 7.5, 1.3, L);
+    } else if (type === 'plate') {
+      g.fillStyle = metal[0]; g.fillRect(Lx - 2, cy + 1.6, w + 4, h); g.fillStyle = 'rgba(255,255,255,.45)'; g.fillRect(Lx + 2, cy + 3.5, 2, 9);
+      if (R >= 2) { g.fillStyle = metal[1]; for (const x of [cx - 7.5, cx, cx + 7.5]) g.fillRect(x - 0.9, cy + 4.5, 1.8, 8); }
+      g.fillStyle = R >= 4 ? '#f2c96a' : metal[1]; g.fillRect(Lx - 2, cy + 0.6, w + 4, 2.2);
+      g.fillStyle = R >= 2 ? '#e6c35c' : metal[2]; for (let i = 0; i < 7; i++) { this.circle(g, Lx + 3 + i * (w - 6) / 6, cy + 1.7, 0.75); g.fill(); }
+      g.fillStyle = metal[1]; for (const x of [Lx - 1, Lx + w + 1]) { this.circle(g, x, B + 0.5, 5.2); g.fill(); }
+      g.fillStyle = metal[0]; for (const x of [Lx - 1.2, Lx + w + 1.2]) { this.circle(g, x, T - 1.6, 5.8); g.fill(); }
+      if (L.emblem) EquipArt.emblem(g, cx, cy + 7.5, 1.3, L);
+    } else if (type === 'robe') {
+      const rc = shade(cloth, 0.72), mb = T + 8.5; g.fillStyle = rc; g.fillRect(Lx - 3, T - 4, w + 6, mb - T + 4);
+      g.save(); g.beginPath(); g.rect(Lx - 3, T - 4, w + 6, mb - T + 4); g.clip(); g.strokeStyle = R >= 2 ? '#f2cf6e' : shade(rc, 1.45); g.lineWidth = 0.45; g.setLineDash([0.9, 0.7]);
+      for (let k = -40; k < 60; k += 5) { g.beginPath(); g.moveTo(Lx + k, T - 4); g.lineTo(Lx + k + 16, mb + 12); g.moveTo(Lx + k + 16, T - 4); g.lineTo(Lx + k, mb + 12); g.stroke(); }
+      g.restore(); g.fillStyle = L.trim; g.fillRect(Lx - 3, mb - 0.4, w + 6, 1.6);
+    }
+    g.restore();
+    // Piping round the rim, stitched, and a soft outline
+    this.pillow(g, cx, cy, w, h); g.strokeStyle = 'rgba(28,18,38,.65)'; g.lineWidth = 1.2; g.stroke();
+    g.save(); this.pillow(g, cx, cy, w - 2.2, h - 2.2); g.strokeStyle = R >= 1 ? mixHex(body, L.trim, 0.75) : shade(body, 0.72); g.lineWidth = 0.5; g.setLineDash([1.1, 0.9]); g.stroke(); g.restore();
+    // The face, peeking out
+    const fy = cy - (type === 'robe' ? -1 : 1);
+    for (const s of [-1, 1]) { g.fillStyle = ink; g.beginPath(); g.ellipse(cx + s * 4.3, fy, 1.35, 1.9, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = '#ffffff'; this.circle(g, cx + s * 4.3 - 0.4, fy - 0.7, 0.45); g.fill(); }
+    g.strokeStyle = ink; g.lineWidth = 0.8; g.beginPath(); g.arc(cx, fy + 1.9, 1.5, 0.3, Math.PI - 0.3); g.stroke();
+    // Legendary gold tassels at the bottom corners
+    if (R >= 4) for (const x of [Lx - 0.6, Lx + w + 0.6]) { g.fillStyle = '#f0c048'; this.circle(g, x, B + 0.8, 1); g.fill(); g.beginPath(); g.moveTo(x - 0.7, B + 1.4); g.lineTo(x + 0.7, B + 1.4); g.lineTo(x + 1.5, B + 5); g.lineTo(x - 1.5, B + 5); g.closePath(); g.fill(); }
+    // The headgear it comes with
+    const M = L.metal || METALS[R];
+    if (hg === 'helm') {
+      g.fillStyle = R >= 4 ? '#ffe08a' : M[0]; g.beginPath(); g.ellipse(cx, T + 1.4, 8.6, 6.4, 0, Math.PI, Math.PI * 2); g.fill();
+      g.fillStyle = L.trim; g.fillRect(cx - 9.2, T + 0.8, 18.4, 1.6); g.strokeStyle = M[1]; g.lineWidth = 1.2; g.beginPath(); g.moveTo(cx, T - 5); g.lineTo(cx, T + 0.8); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.ellipse(cx - 3.5, T - 2, 2, 1.2, -0.5, 0, Math.PI * 2); g.fill();
+      if (R >= 4) { g.fillStyle = L.cape || '#b8403a'; g.beginPath(); g.moveTo(cx, T - 5); g.quadraticCurveTo(cx + 6, T - 12, cx + 10, T - 8); g.quadraticCurveTo(cx + 5, T - 7, cx, T - 5); g.fill(); }
+    } else if (hg === 'coif' || hg === 'hood') {
+      const hc = hg === 'coif' ? M[1] : type === 'robe' ? shade(L.cloth, 0.85) : shade(mixHex('#7a4e2c', L.cloth, 0.22), 0.85);
+      g.save(); this.pillow(g, cx, cy, w + 1.6, h + 1.6); g.clip(); g.fillStyle = hc; g.fillRect(Lx - 4, T - 5, w + 8, 10.5);
+      if (hg === 'coif') { g.fillStyle = 'rgba(40,48,70,.4)'; for (let y = T - 4; y < T + 5.5; y += 1.6) for (let x = Lx - 4 + ((y / 1.6) % 2) * 0.8; x < Lx + w + 4; x += 1.6) g.fillRect(x, y, 0.8, 0.8); }
+      g.fillStyle = hg === 'coif' ? '#3a2616' : R >= 2 ? L.trim : shade(hc, 0.8); g.fillRect(Lx - 4, T + 4.2, w + 8, 1.6); g.restore();
+    } else if (hg === 'hat' || hg === 'nightcap') {
+      const hc = hg === 'hat' ? shade(L.cloth || '#5a3a8a', 0.85) : mixHex(shade(L.cloth || '#5a3a8a', 0.85), '#343f7a', 0.45);
+      g.fillStyle = hc;
+      if (hg === 'hat') { g.beginPath(); g.ellipse(cx, T + 1.5, 13, 2.6, 0, 0, Math.PI * 2); g.fill(); g.beginPath(); g.moveTo(cx - 8, T + 1); g.quadraticCurveTo(cx - 3, T - 8, cx + 4, T - 17); g.quadraticCurveTo(cx + 2, T - 6, cx + 8, T + 1); g.closePath(); g.fill(); }
+      else { g.beginPath(); g.moveTo(cx - 8.5, T + 1.5); g.quadraticCurveTo(cx - 6, T - 9, cx + 4, T - 11); g.quadraticCurveTo(cx + 12, T - 12, cx + 14, T - 4); g.quadraticCurveTo(cx + 9, T - 8, cx + 5, T - 6); g.quadraticCurveTo(cx + 8, T - 3, cx + 8.5, T + 1.5); g.closePath(); g.fill(); this.star(g, cx + 14, T - 2.6, 2, '#f4c95d'); }
+      g.fillStyle = '#f4c95d'; g.fillRect(cx - 8, T - 1.4, 16, 1.8); this.star(g, cx - 1.5, T - 5, 1.8, '#fff4c8');
+    }
+  },
+  /** Trinkets as the pillow wears them. */
+  trinket(g, item) {
+    const L = item.look, gold = item.rarity >= 2 || L.variant % 2 === 0, M = gold ? ['#fff0b3', '#f2c14e', '#b8842a'] : ['#f2f5fa', '#c9ced8', '#7b818c'];
+    if (L.glow) EquipArt.glowAt(g, 24, 26, 24, L.glow, 0.45);
+    if (item.icon === 'ring') {
+      // An earring through a pillow's ear corner
+      g.fillStyle = PIL_CREAM; g.beginPath(); g.moveTo(3, 3); g.quadraticCurveTo(12, 6, 22, 7.5); g.quadraticCurveTo(15, 11, 13, 22); g.quadraticCurveTo(7, 12, 3, 3); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(28,18,38,.55)'; g.lineWidth = 1; g.stroke();
+      g.save(); g.strokeStyle = shade(PIL_CREAM, 0.7); g.lineWidth = 0.6; g.setLineDash([1.2, 1]); g.beginPath(); g.moveTo(5, 5.4); g.quadraticCurveTo(12, 8, 19, 9); g.stroke(); g.restore();
+      g.strokeStyle = M[2]; g.lineWidth = 4.6; this.circle(g, 22, 24, 9.5); g.stroke(); g.strokeStyle = M[1]; g.lineWidth = 3; g.stroke();
+      g.strokeStyle = M[0]; g.lineWidth = 1.1; g.beginPath(); g.arc(22, 24, 9.5, Math.PI * 1.05, Math.PI * 1.6); g.stroke();
+      if (L.variant === 2) { g.strokeStyle = M[1]; g.lineWidth = 2; g.beginPath(); g.ellipse(22, 24, 3.5, 9.5, 0, 0, Math.PI * 2); g.stroke(); }
+      if (L.variant === 1) { const pg = g.createRadialGradient(21, 36, 0.5, 22, 37.5, 5); pg.addColorStop(0, '#ffffff'); pg.addColorStop(1, '#e2d6c4'); g.fillStyle = pg; this.circle(g, 22, 38, 4.4); g.fill(); }
+      else this.gem(g, 22, 38.5, 5.8 + (item.rarity >= 3 ? 1.2 : 0), L.gem);
+    } else if (item.icon === 'amulet') {
+      // A brooch: a safety pin, two ribbon tails, a rosette from rare, the pendant with its gem
+      const rb = ['#8a2a3a', '#2a4a8a', '#2f6a3a'][L.variant | 0];
+      if (item.rarity >= 2) { g.fillStyle = rb; this.circle(g, 24, 30, 10.5); g.fill(); g.strokeStyle = shade(rb, 1.35); g.lineWidth = 0.8; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; g.beginPath(); g.moveTo(24 + Math.cos(a) * 6.5, 30 + Math.sin(a) * 6.5); g.lineTo(24 + Math.cos(a) * 10.2, 30 + Math.sin(a) * 10.2); g.stroke(); } }
+      g.fillStyle = shade(rb, 0.9); for (const s of [-1, 1]) { g.beginPath(); g.moveTo(24 + s * 1, 14); g.lineTo(24 + s * 7.5, 38); g.lineTo(24 + s * 5, 36); g.lineTo(24 + s * 3, 39.5); g.lineTo(24 - s * 2, 15); g.closePath(); g.fill(); }
+      g.strokeStyle = M[2]; g.lineWidth = 1.8; g.beginPath(); g.moveTo(11, 11); g.lineTo(37, 11); g.moveTo(12, 14.5); g.lineTo(35, 14.5); g.stroke();
+      g.strokeStyle = M[1]; g.lineWidth = 1.1; g.beginPath(); g.moveTo(11, 11); g.lineTo(37, 11); g.moveTo(12, 14.5); g.lineTo(35, 14.5); g.stroke();
+      g.lineWidth = 1.4; this.circle(g, 10, 12.8, 2.4); g.stroke(); g.fillStyle = M[1]; roundRectPath(g, 34.5, 9, 5, 7, 1.5); g.fill();
+      g.fillStyle = M[2]; this.circle(g, 24, 30, 6.8); g.fill(); g.fillStyle = M[1]; this.circle(g, 24, 30, 5.6); g.fill();
+      this.gem(g, 24, 30, 4, L.gem);
+    } else {
+      // A keychain: a loop of tape, the split ring, two links and the charm
+      g.strokeStyle = '#c8b48a'; g.lineWidth = 2.4; roundRectPath(g, 20.5, 2, 7, 8, 2.5); g.stroke();
+      g.strokeStyle = M[2]; g.lineWidth = 2; this.circle(g, 24, 13.5, 3.6); g.stroke(); g.strokeStyle = M[1]; g.lineWidth = 1.2; g.stroke();
+      g.lineWidth = 1.2; g.beginPath(); g.ellipse(24, 19, 1.3, 2.2, 0, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.ellipse(24, 22.6, 2.2, 1.3, 0, 0, Math.PI * 2); g.stroke();
+      if (L.variant === 0) { g.fillStyle = M[1]; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 5.5 : 12; g.lineTo(24 + Math.cos(a) * r, 34 + Math.sin(a) * r); } g.closePath(); g.fill(); this.gem(g, 24, 34, 4.5, L.gem); }
+      else if (L.variant === 1) { g.fillStyle = M[1]; g.beginPath(); g.arc(24, 34, 11, 0, Math.PI * 2); g.arc(29, 30, 9.5, 0, Math.PI * 2, true); g.fill('evenodd'); this.gem(g, 18, 37, 3.2, L.gem); }
+      else { g.fillStyle = L.gem; g.beginPath(); g.moveTo(24, 24); g.quadraticCurveTo(35, 34, 24, 46); g.quadraticCurveTo(13, 34, 24, 24); g.fill(); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 1; g.beginPath(); g.moveTo(24, 26); g.lineTo(24, 45); g.stroke(); }
+    }
+  },
+};
+{
+  // Weapon extents along their length (for fitting the diagonal)
+  const EXT = { sword: [-12, 28], dagger: [-11.2, 17.5], greatsword: [-14, 38], axe: [-11.5, 34], hammer: [-11.6, 30], staff: [-12, 42], wand: [-8.5, 19.5], spear: [-15, 46.5], scythe: [-10, 45] };
+  EquipArt.drawIcon = function (g, item) {
+    g.save();
+    if (item.kind === 'weapon' && EXT[item.icon]) {
+      const [a, b] = EXT[item.icon], sc = Math.min(2.1, 54 / (b - a));
+      g.translate(24, 24); g.rotate(-Math.PI / 4); g.scale(sc, sc); g.translate(-(a + b) / 2, item.icon === 'scythe' ? -5 : item.icon === 'hammer' || item.icon === 'axe' ? -2 : 0);
+      SEW_ICON.weapon(g, item, 0.4);
+    } else if (item.kind === 'armor') SEW_ICON.armor(g, item);
+    else if (item.kind === 'accessory') SEW_ICON.trinket(g, item);
+    g.restore();
+  };
+  // A glow never runs past the icon's edge (it would end in a hard line there): it shrinks to the room it has
+  const baseGlowAt = EquipArt.glowAt;
+  EquipArt.glowAt = function (g, x, y, r, color, a) {
+    const T = g.getTransform(), px = T.a * x + T.c * y + T.e, py = T.b * x + T.d * y + T.f, sc = Math.hypot(T.a, T.b) || 1, W = g.canvas.width;
+    return baseGlowAt.call(this, g, x, y, Math.max(1.5, Math.min(r, Math.min(px, py, W - px, W - py) / sc)), color, a);
+  };
+  // Twice the pixels, smooth scaling, and one shadow under the whole drawing
+  const draw2x = (key, fn) => {
+    const c = document.createElement('canvas'), t = document.createElement('canvas'); c.width = c.height = t.width = t.height = key;
+    const gt = t.getContext('2d'); gt.scale(key / 48, key / 48); fn(gt);
+    const g = c.getContext('2d'); g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = key / 20; g.shadowOffsetY = key / 34; g.drawImage(t, 0, 0);
+    let url = ''; try { url = c.toDataURL(); } catch (e) { url = ''; }
+    return { canvas: c, url };
+  };
+  IconFactory.forItem = function (item) {
+    if (!IconFactory.cache) IconFactory.cache = {};
+    const key = 'eq2|' + item.uid + '|' + item.rarity;
+    if (!IconFactory.cache[key]) IconFactory.cache[key] = draw2x(96, g => { try { EquipArt.drawIcon(g, item); } catch (e) { console.error(e); } });
+    return IconFactory.cache[key];
+  };
+  const baseDrawIcon = IconFactory.draw;
+  IconFactory.get = function (name, color = '#c9ccd6') {
+    if (!IconFactory.cache) IconFactory.cache = {};
+    const key = 'x2|' + name + '|' + color;
+    if (!IconFactory.cache[key]) IconFactory.cache[key] = draw2x(64, g => { g.scale(48 / 32, 48 / 32); baseDrawIcon.call(IconFactory, g, name, color); });
+    return IconFactory.cache[key];
+  };
+  document.head.insertAdjacentHTML('beforeend', '<style>.toast img, .dico img, .it img, .row2 img, .vsi img, #upChip img, #swapChip img { image-rendering: auto; }</style>');
 }
 
 // =============================================================================
