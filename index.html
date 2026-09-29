@@ -1823,12 +1823,13 @@ const WEAPON_BASES = [
   { type: 'Warhammer', icon: 'hammer', atk: 12, speed: 0.72 },
   { type: 'Staff', icon: 'staff', atk: 4, mp: 20, spell: 0.3, speed: 1 },
 ];
+// Armour a pillow can wear (the icons keep the 2D game's names: tunic, leather, chain, plate, robe)
 const ARMOR_BASES = [
-  { type: 'Tunic', icon: 'tunic', def: 2, hp: 10 },
-  { type: 'Leather Vest', icon: 'leather', def: 3, spd: 6 },
-  { type: 'Chainmail', icon: 'chain', def: 5, hp: 15 },
-  { type: 'Plate Armor', icon: 'plate', def: 8, hp: 25, spd: -10 },
-  { type: 'Mage Robe', icon: 'robe', def: 1, mp: 30, spell: 0.2 },
+  { type: 'Pillowcase', icon: 'tunic', def: 2, hp: 10 },
+  { type: 'Saddle Patches', icon: 'leather', def: 3, spd: 6 },
+  { type: 'Mail Slip', icon: 'chain', def: 5, hp: 15 },
+  { type: 'Plate Shell', icon: 'plate', def: 8, hp: 25, spd: -10 },
+  { type: 'Star Quilt', icon: 'robe', def: 1, mp: 30, spell: 0.2 },
 ];
 const TRINKET_BASES = [
   { type: 'Ring', icon: 'ring', crit: 0.04, atk: 1 },
@@ -1844,6 +1845,13 @@ const FLAVOR = [
   'Still warm from the forge.', 'Hums quietly when danger is near.', 'Someone carved initials into it.',
   'Lighter than it looks.', 'Smells faintly of ozone.', 'Found far from where it was lost.',
 ];
+// Fabric gear is spun and sewn, not forged: its own words and its own flavour
+const FABRIC_TYPES = new Set(['Pillowcase', 'Saddle Patches', 'Star Quilt']);
+const FABRIC_WORDS = { Rusty: 'Frayed', Keen: 'Snug', Polished: 'Pressed', Shadowforged: 'Shadowspun' };
+const FLAVOR_SOFT = [
+  'Still warm from the dryer.', 'Smells of lavender and adventure.', 'Someone embroidered initials into it.',
+  'Softer than it looks.', 'Every stitch is a tiny promise.', 'Found far from where it was lost.',
+];
 
 /** ItemFactory – creates randomized loot with rarity-scaled stats. */
 const ItemFactory = {
@@ -1858,7 +1866,8 @@ const ItemFactory = {
     return Math.round((10 + score * 2.4) * (1 + rarity * 0.65));
   },
   makeName(type, r) {
-    let n = choice(PREFIX[r]) + ' ' + type;
+    const w = choice(PREFIX[r]);
+    let n = (FABRIC_TYPES.has(type) && FABRIC_WORDS[w] || w) + ' ' + type;
     if (r >= 2 && Math.random() < 0.6) n += ' ' + choice(SUFFIX);
     return n;
   },
@@ -1889,7 +1898,7 @@ const ItemFactory = {
     this.addAffixes(stats, rarity, tier);
     return new Cls({
       name: this.makeName(base.type, rarity), rarity, tier, icon: base.icon, type: base.type, speed: base.speed || 1,
-      stats, value: this.valueOf(stats, rarity), desc: choice(FLAVOR),
+      stats, value: this.valueOf(stats, rarity), desc: choice(FABRIC_TYPES.has(base.type) ? FLAVOR_SOFT : FLAVOR),
     });
   },
   /** Named legendary from one of the Abyss's unique monsters. */
@@ -13859,14 +13868,14 @@ function skinTwin(m, kind, wear) {
 function pickHeadgear(a) {
   if (!a || SETTINGS.helm === false) return null;
   const L = a.look || ItemLook.make(a), v = (L.variant + (a.rarity >= 3 ? 1 : 0)) % 3;
-  return { plate: v !== 2 ? 'helm' : null, chain: v === 0 ? 'coif' : null, leather: v === 1 ? 'hood' : null, robe: v === 0 ? 'hat' : v === 1 ? 'hood' : null }[a.icon] || null;
+  return { plate: v !== 2 ? 'helm' : null, chain: v === 0 ? 'coif' : null, leather: v === 1 ? 'hood' : null, robe: v === 0 ? 'hat' : v === 1 ? 'hood' : 'nightcap' }[a.icon] || null;
 }
 {
   const baseLook = heroLook;
   heroLook = function (player) {
     const o = baseLook(player);
     o.headgear = pickHeadgear(player.equip.armor);
-    if (o.headgear) { o.noBand = true; if (o.headgear === 'hat' || o.headgear === 'hood') o.circlet = null; }
+    if (o.headgear) { o.noBand = true; if (o.headgear === 'hat' || o.headgear === 'hood' || o.headgear === 'nightcap') o.circlet = null; }
     return o;
   };
 }
@@ -16789,15 +16798,15 @@ const HD_WPN = { uWpnV: { value: new THREE.Vector3() }, uWpnC: { value: new THRE
 // THE PILLOW
 //   The hero is a floating pillow wizard, after the pillow characters of lelelilo.com (the unreal-wizard
 //   project's Pillow Wizard): a plump canvas cushion with pinched ear corners and soft pleats fanning out of
-//   them, stitched piping round the rim, a care tag caught in the side seam, a glossy face, a floppy
-//   nightcap with a gold band and a star on its tip, and a short cape.
+//   them, stitched piping round the rim, a care tag caught in the side seam and a glossy face. It starts out
+//   bare: hats (the reference's floppy nightcap among them) and capes only come with gear.
 //   It has no hands or feet. It glides on a cushion of wind, and whatever a hand would hold (the weapon, a
 //   potion, the whetstone, a leaf) levitates beside it, carried by invisible "ghost" arms: every existing
 //   swing, spell, gesture and fidget still moves the things it holds. Head turns and nods bend the
 //   cushion's soft upper half, the ears flick, the hat whips, and anything that pushes the body down (sitting
 //   by the fire, kneeling, falling) makes it settle on the ground and squash instead of sinking.
-//   Armour becomes what a pillow can wear: a pillowcase, leather corner patches and a belt, a mail skirt
-//   and tabard, plate caps and a breastplate, a wizard's mantle. Rarer gear gets trimmed, then glowing, seams.
+//   Armour becomes what a pillow can wear, all of it sewn on (see "the pillow's wardrobe"): a pillowcase,
+//   saddle patches, a mail slip, a plate shell, a star quilt. Rarer gear gets trimmed, then glowing, seams.
 // =============================================================================
 const PIL = { K: 0.62, HOVER: 0.14 };
 PIL.s = PIL.K / 52;                        // the reference model's centimetres, in world units
@@ -16883,7 +16892,8 @@ function pillowGeo(pos, idx, extra = {}) {
   g.setIndex(idx); g.computeVertexNormals(); g.userData.own = true; return g;
 }
 /** A shell following the cushion (armour, hoods, mantles): the triangles whose corners pass mask(l, u, d), lifted
- *  off the surface by `off`, with a thin wall round its edge so it reads as a layer with some thickness. */
+ *  off the surface by `off`, with a thin wall round its edge so it reads as a layer with some thickness. Its edge
+ *  is kept in userData.shell, for stitching (pillowRimItems). */
 function pillowShell(mask, off, opts = {}) {
   const S = pillowSurface(), keep = new Map(), P = [], N = [], uv = [], tris = [], edges = new Map();
   const use = i => {
@@ -16902,16 +16912,16 @@ function pillowShell(mask, off, opts = {}) {
     for (const [e0, e1, o] of [[A, B, C], [B, C, A], [C, A, B]]) { const k = Math.min(e0, e1) + ',' + Math.max(e0, e1); edges.set(k, edges.has(k) ? null : [e0, e1, o]); }
   }
   // The wall: down from each boundary edge to just above the cushion
-  const wallFrom = P.length / 3, lip = opts.lip === undefined ? off - 0.002 : opts.lip;
+  const wallFrom = P.length / 3, lip = opts.lip === undefined ? off - 0.002 : opts.lip, rim = [];
   for (const e of edges.values()) {
     if (!e) continue;
-    const [a, b] = e, base = P.length / 3;
+    const [a, b] = e, base = P.length / 3; rim.push(e);
     for (const i of [a, b]) { P.push(P[i * 3] - N[i * 3] * lip, P[i * 3 + 1] - N[i * 3 + 1] * lip, P[i * 3 + 2] - N[i * 3 + 2] * lip); N.push(0, 0, 0); uv.push(uv[i * 2], uv[i * 2 + 1]); }
     tris.push(a, base, b, b, base, base + 1);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(tris);
-  g.computeVertexNormals(); g.userData.own = true; g.userData.wallFrom = wallFrom;
+  g.computeVertexNormals(); g.userData.own = true; g.userData.wallFrom = wallFrom; g.userData.shell = { P, N, rim };
   return g;
 }
 /** Skin a cushion part to the pillow's four bones (weights follow the position, so every layer bends alike). */
@@ -16938,6 +16948,103 @@ function pillowFace(obj, n, up = new THREE.Vector3(0, 1, 0)) {
   const z = n.clone().normalize(), x = new THREE.Vector3().crossVectors(up, z); if (x.lengthSq() < 1e-6) x.set(1, 0, 0); x.normalize();
   const y = new THREE.Vector3().crossVectors(z, x); obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
   return obj;
+}
+
+// ---------------------------------------------------------------- the sewing box
+// Everything the pillow wears is sewn: thread along the edges of each piece (a running stitch, or cross-stitch
+// on leather), buttons threaded with an X, tassels that swing, and fabric with a pattern of its own.
+/** Stitches as flat thread quads lying on the surface: each item { c: centre, t: along, n: normal, h: half length }. */
+function pillowStitchGeo(items, w) {
+  const n = items.length, P = new Float32Array(n * 12), Nn = new Float32Array(n * 12), I = [], sd = new THREE.Vector3(), v = new THREE.Vector3();
+  items.forEach((it, k) => {
+    sd.crossVectors(it.n, it.t).normalize().multiplyScalar(w / 2);
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([a, b], j) => { v.copy(it.c).addScaledVector(it.t, a * it.h).addScaledVector(sd, b); P.set([v.x, v.y, v.z], (k * 4 + j) * 3); Nn.set([it.n.x, it.n.y, it.n.z], (k * 4 + j) * 3); });
+    const q = k * 4; I.push(q, q + 1, q + 2, q, q + 2, q + 3);
+  });
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(Nn, 3)); g.setIndex(I); g.userData.own = true;
+  return g;
+}
+/** Stitches along a shell's edge: one dash per edge segment, set in from the edge, or a cross-stitch straddling it. */
+function pillowRimItems(geo, o = {}) {
+  const S = geo.userData.shell, out = [], lift = o.lift ?? 0.0012, A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
+  if (!S) return out;
+  for (const [a, b, c] of S.rim) {
+    A.fromArray(S.P, a * 3); B.fromArray(S.P, b * 3); C.fromArray(S.P, c * 3);
+    if (o.skip && o.skip(A, B)) continue;
+    const n = new THREE.Vector3(S.N[a * 3] + S.N[b * 3], S.N[a * 3 + 1] + S.N[b * 3 + 1], S.N[a * 3 + 2] + S.N[b * 3 + 2]).normalize();
+    const t = B.clone().sub(A), len = t.length(); if (len < 1e-5) continue; t.multiplyScalar(1 / len);
+    const mid = A.clone().add(B).multiplyScalar(0.5), inw = C.clone().sub(mid);
+    inw.addScaledVector(t, -inw.dot(t)).addScaledVector(n, -inw.dot(n)).normalize();
+    if (o.style === 'x') for (const sg of [1, -1]) out.push({ c: mid.clone().addScaledVector(inw, 0.0015).addScaledVector(n, lift), t: t.clone().multiplyScalar(0.7071).addScaledVector(inw, 0.7071 * sg).normalize(), n, h: len * 0.34 });
+    else out.push({ c: mid.clone().addScaledVector(inw, o.inset ?? 0.008).addScaledVector(n, lift), t, n, h: len * (o.dash ?? 0.27) });
+  }
+  return out;
+}
+/** Stitches along a path on the cushion: fn(k) gives (l, u, d) for k in [0, 1], one dash every `step` world units. */
+function pillowPathItems(fn, step, o = {}) {
+  const out = [], M = 400, pts = [];
+  for (let k = 0; k <= M; k++) { const [l, u, d] = fn(k / M), q = pillowAt(l, u, d); pts.push(q); }
+  let acc = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const a = pts[k - 1], b = pts[k], seg = a.p.distanceTo(b.p); acc += seg;
+    if (acc < step) continue; acc = 0;
+    const t = b.p.clone().sub(a.p).normalize(), n = a.n.clone().add(b.n).normalize();
+    out.push({ c: a.p.clone().addScaledVector(n, o.lift ?? 0.0022), t, n, h: step * (o.dash ?? 0.3) });
+  }
+  return out;
+}
+/** Fabric patterns (tiling canvases): ticking stripes, polka dots, gingham; a faint weave over all of them. */
+const PIL_PAT = {};
+function pillowPattern(kind, a, b) {
+  const key = kind + a + b; if (PIL_PAT[key]) return PIL_PAT[key];
+  const W = 128, c = document.createElement('canvas'); c.width = c.height = W; const g = c.getContext('2d');
+  g.fillStyle = a; g.fillRect(0, 0, W, W); g.fillStyle = b;
+  if (kind === 'ticking') for (const x0 of [0, 64]) { g.fillRect(x0 + 6, 0, 16, W); g.fillRect(x0 + 32, 0, 4, W); g.fillRect(x0 + 42, 0, 4, W); }
+  else if (kind === 'dots') for (const [x, y] of [[32, 32], [96, 96], [96, -32], [-32, 96], [160, 96], [96, 160]]) { g.beginPath(); g.arc(x, y, 11, 0, Math.PI * 2); g.fill(); }
+  else if (kind === 'gingham') { g.globalAlpha = 0.55; for (const x0 of [0, 64]) { g.fillRect(x0, 0, 32, W); g.fillRect(0, x0, W, 32); } g.globalAlpha = 1; }
+  else if (kind === 'quilt') {
+    // Diamonds puffed up between the quilting lines, a running stitch down each line, a tufted button at each crossing
+    const img = g.getImageData(0, 0, W, W), A = col(a), D = img.data;
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const p = ((x + y) % W) / W, q = ((x - y + W) % W) / W, h = Math.min(Math.sin(Math.PI * p), Math.sin(Math.PI * q)), k = 0.62 + 0.46 * Math.sqrt(h), i = (y * W + x) * 4;
+      D[i] = Math.min(255, A.r * 255 * k); D[i + 1] = Math.min(255, A.g * 255 * k); D[i + 2] = Math.min(255, A.b * 255 * k);
+    }
+    g.putImageData(img, 0, 0);
+    g.strokeStyle = b; g.lineWidth = 2.2; g.setLineDash([6, 5]);
+    for (const o of [-W, 0, W]) { g.beginPath(); g.moveTo(o, 0); g.lineTo(o + W, W); g.moveTo(o + W, 0); g.lineTo(o, W); g.stroke(); }
+    g.setLineDash([]);
+    for (const [x, y] of [[0, 0], [W, 0], [0, W], [W, W], [W / 2, W / 2]]) { g.fillStyle = shade(b, 0.7); g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.fill(); g.fillStyle = b; g.beginPath(); g.arc(x - 1, y - 1, 5, 0, Math.PI * 2); g.fill(); }
+  }
+  g.globalAlpha = 0.07; g.fillStyle = '#000';
+  for (let i = 0; i < W; i += 2) { g.fillRect(i, 0, 1, W); g.fillRect(0, i + 1, W, 1); }
+  g.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  return PIL_PAT[key] = t;
+}
+/** A sewing button facing +z: a rounded disc with a raised rim, four holes and the thread crossed through them. */
+function pillowButton(parent, r, color, thread, gem) {
+  const b = pivot(parent, 0, 0, 0), m = typeof color === 'string' ? cmat(color, { roughness: 0.42 }) : color;
+  cpart(b, CYL12, m, 0, 0, r * 0.16, r, r * 0.32, r).rotation.x = Math.PI / 2;
+  cpart(b, TORUS2, m, 0, 0, r * 0.3, r * 0.84, r * 0.84, r * 0.6).castShadow = false;
+  if (gem) { cpart(b, OCT, gem, 0, 0, r * 0.4, r * 0.42, r * 0.42, r * 0.3).castShadow = false; return b; }
+  for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) cpart(b, CYL12, '#1e1410', x * r * 0.28, y * r * 0.28, r * 0.33, r * 0.11, r * 0.02, r * 0.11).rotation.x = Math.PI / 2;
+  for (const a of [Math.PI / 4, -Math.PI / 4]) cpart(b, BOXC, thread, 0, 0, r * 0.36, r * 0.92, r * 0.13, r * 0.05, { roughness: 0.7 }).rotation.z = a;
+  return b;
+}
+/** A tassel hanging from the pivot: a knot, a binding and a skirt of threads. */
+function pillowTassel(parent, color, size, x = 0, y = 0, z = 0) {
+  const p = pivot(parent, x, y, z), m = cmat(color, { roughness: 0.5, metalness: 0.35 }), dk = cmat(shade(color, 0.72), { roughness: 0.5, metalness: 0.35 });
+  cpart(p, SPHL, m, 0, -size * 0.12, 0, size * 0.13, size * 0.13, size * 0.13);
+  cpart(p, CYL12, dk, 0, -size * 0.3, 0, size * 0.085, size * 0.08, size * 0.085);
+  cpart(p, CONE12, m, 0, -size * 0.66, 0, size * 0.2, size * 0.62, size * 0.2);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; cpart(p, CYL12, dk, Math.cos(a) * size * 0.12, -size * 0.7, Math.sin(a) * size * 0.12, size * 0.018, size * 0.5, size * 0.018).rotation.set(Math.sin(a) * 0.2, 0, -Math.cos(a) * 0.2); }
+  return p;
+}
+/** The thread colour tells the rarity: tonal when common, cream when uncommon, the rarity colour when rare and
+ *  epic (which glows), gold when legendary. */
+function pillowThread(R, armor, base) {
+  if (!armor) return shade(base, 0.62);
+  return R >= 4 ? '#ffd166' : R >= 2 ? RARITIES[R].color : R === 1 ? '#f3e8cc' : shade(base, 0.58);
 }
 
 // ---------------------------------------------------------------- the face
@@ -17039,9 +17146,11 @@ function paintPillowFace(F, st) {
     if (rig.pillow && (rig.dead || (rig.squint > 0.25 && !rig.slip))) { s.eyes = 'x'; s.mouth = 'o'; }
     return s;
   };
-  // The cushion's fabric is its own kind: soft folds and a fine weave, no centre seam, a felt sheen
+  // The cushion's fabric is its own kind: soft folds and a fine weave, no centre seam, a felt sheen (patterned too)
   const baseKind = heroSurfaceKind;
   heroSurfaceKind = function (m, o) { return m && m.userData && m.userData.plush ? 1.3 : baseKind(m, o); };
+  const baseTwin = skinTwin;
+  skinTwin = function (m, kind, wear) { return baseTwin(m, kind === 0 && m.map && m.userData && m.userData.plush && !(m.metalness > 0.2) ? 1.3 : kind, wear); };
 }
 
 // ---------------------------------------------------------------- the hat
@@ -17066,7 +17175,7 @@ function pillowHatRing(sp, k, grow = 0, sides = 24, big = 1) {
 function pillowSpineAt(sp, t) { const f = t * (sp.length - 1), k = Math.min(sp.length - 2, Math.floor(f)); return sp[k].p.clone().lerp(sp[k + 1].p, f - k); }
 function buildPillowHat(parent, o, K, style) {
   const s = PIL.s, sp = pillowHatSpine(), sides = IS_TOUCH ? 16 : 24, big = style === 'wizard' ? 1.08 : 1;
-  const R = o.rarity || 0, L = o.L || {}, cloth = style === 'wizard' ? shade(o.tunic || '#5a3a8a', 0.85) : '#343f7a';
+  const R = o.rarity || 0, L = o.L || {}, cloth = style === 'wizard' ? shade(o.tunic || '#5a3a8a', 0.85) : o.armor === 'robe' ? mixHex(shade(o.tunic || '#5a3a8a', 0.85), '#343f7a', 0.45) : '#343f7a';
   const hat1 = pivot(parent, 0, PIL.HAT - PIL.UP, 0), p2 = pillowSpineAt(sp, 0.3), p3 = pillowSpineAt(sp, 0.62);
   const hat2 = pivot(hat1, p2.x, p2.y, p2.z), hat3 = pivot(hat2, p3.x - p2.x, p3.y - p2.y, p3.z - p2.z);
   // The cone: a skirt tucked into the cushion's top, then the rings up the spine, capped at both ends
@@ -17107,6 +17216,233 @@ function buildPillowHat(parent, o, K, style) {
   return { hat1, hat2, hat3, tipHang, charm, cone };
 }
 
+// ---------------------------------------------------------------- the pillow's wardrobe
+// What the pillow wears, cut to the cushion and sewn on. Without armour it wears nothing at all.
+//   Pillowcase (tunic): the body's own fabric (plain, ticking or dots, see buildPillowModel), a hemmed base and
+//     an envelope flap across the back held down with a button; a darn on a common one, an embroidered star
+//     badge from rare, a lace edge from epic.
+//   Saddle patches (leather): leather corner guards cross-stitched on, a stitched belt with a buckle, a keeper
+//     and the strap's tongue; rivets from uncommon, studs round the patches from epic.
+//   Mail slip (chain): mail over the lower half sewn to a leather band, and stitched tabards front and back.
+//   Plate shell (plate): a breastplate with a rolled lip and a row of rivets, fluted from rare, cups over the
+//     ears (spiked from epic) and caps on the bottom corners; gilt edges when legendary.
+//   Star quilt (robe): a diamond-quilted mantle with tufted buttons at the crossings and a trimmed, stitched
+//     edge, a long drape at the back, and a wizard's hat, a hood or the starry nightcap.
+//   Legendary gear hangs gold tassels from the cushion's corners. Capes (rare light gear, uncommon heavy gear)
+//   are cut from pillowcase cloth and buttoned on at the ears, with a straight, scalloped or dagged hem.
+//   Trinkets: a ring is an earring in an ear corner, an amulet a brooch on a safety pin, a charm a keychain on a
+//   loop of tape in the side seam. Earrings, pendants, keychains and tassels swing (P.dangle, in pillowAnimate).
+let PIL_LACE = null;
+function pillowWardrobe(C) {
+  const { o, R, L, armor, trim, M0, polish, metalA, metalB, gold, leatherC, glowing, bodyCol, caseMap, caseCloth, cushion, lower, upper, tuftA, tuftB, skinned, onCushion } = C;
+  const V = (x, y, z) => new THREE.Vector3(x, y, z), K = PIL.K, s = PIL.s;
+  const out = { hair: null, hat: null, cape: null, dangle: [] };
+  const shellMat = (c, o2 = {}) => {
+    const { plush, ...rest } = o2, m = patchMaterial(new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8, skinning: true }, rest)), { cutY: 9 });
+    if (rest.metalness > 0.2) { m.envMap = ENV.tex; m.envMapIntensity = 1.35; }
+    if (plush) m.userData.plush = true;
+    return m;
+  };
+  const shell = (mask, off, mat, opts) => { const m = pillowSkin(pillowShell(mask, off, opts), mat, cushion); skinned.push(m); return m; };
+  const thread = pillowThread(R, armor, caseMap ? caseCloth : bodyCol), glowThread = !!armor && R >= 3;
+  const threadMat = c => glowThread ? shellMat(c, { emissive: c, emissiveIntensity: 0.85, roughness: 0.5 }) : shellMat(c, { roughness: 0.62 });
+  const threadRigid = c => glowThread ? glowC(c, 1.1) : cmat(c, { roughness: 0.62 });
+  const sewItems = (items, c = thread, w = 0.0034) => {
+    if (!items.length) return null;
+    const m = pillowSkin(pillowStitchGeo(items, w), threadMat(c), cushion); m.castShadow = false; m.userData.noInk = true; skinned.push(m); return m;
+  };
+  const sew = (mesh, opt = {}) => sewItems(pillowRimItems(mesh.geometry, opt), opt.c || thread, opt.w);
+  // A pivot on the cushion's surface, facing out (baked into its bone, since it never moves on its own)
+  const at = (l, u, d, lift, bake = true) => { const q = onCushion(l, u, d, lift), p = pivot(q.par, q.p.x, q.p.y, q.p.z); pillowFace(p, q.n); p.userData.bake = bake; return p; };
+  // A point on an ear corner, in its tuft bone's space
+  const onEar = (sx, l, u, d = 0) => ({ bone: sx > 0 ? tuftA : tuftB, p: pillowPoint(sx * l, u, d).sub(V(sx * 0.28 * K, 0.42 * K, 0)) });
+  // Something that hangs and swings
+  const hang = (par, x, y, z, k = 1, extra = {}) => { const p = pivot(par, x, y, z); out.dangle.push(Object.assign({ p, k, a: 0, v: 0, b: 0, w: 0, ph: Math.random() * 6 }, extra)); return p; };
+  const face = (l, u, d) => d > 0.4 && Math.abs(l) < 0.7 && u > -0.22 && u < 0.5;   // keep the face clear
+
+  if (armor === 'tunic') {
+    const caseMat = k => shellMat(caseMap ? '#ffffff' : shade(bodyCol, k), Object.assign({ roughness: 0.9, plush: true }, caseMap ? { map: caseMap } : {}));
+    // The envelope flap folds over the back from the opening at the top; a button holds its point down
+    const flap = shell((l, u, d) => d < -0.45 && u > -0.36 + 0.52 * Math.abs(l), 0.006, caseMat(1.05), { uv: 7 });
+    sew(flap, { inset: 0.007 });
+    pillowButton(at(0, -0.34, -1, 0.012), 0.017, R >= 2 ? gold : '#7a5236', R >= 2 ? shade(trim, 0.7) : '#efe2c4');
+    // A hemmed band round the base
+    sew(shell((l, u) => u < -0.72 && u > -0.9, 0.008, shellMat(caseMap ? shade(caseCloth, 0.92) : shade(bodyCol, 0.86), { roughness: 0.88, plush: true })), { inset: 0.006 });
+    if (R === 0) {   // a darn: a scrap of other cloth cross-stitched over a hole
+      const scrap = mixHex(PIL_CREAM, CLOTH.tunic[((L.variant | 0) + 2) % 5], 0.55);
+      sew(shell((l, u, d) => d > 0.5 && l > 0.38 && l < 0.74 && u > -0.66 && u < -0.32, 0.007, shellMat(scrap, { roughness: 0.9, plush: true })), { style: 'x', c: shade(scrap, 0.5) });
+    }
+    if (R >= 2) {   // an embroidered badge: a star in a ring of running stitch
+      const st = new THREE.Mesh(pillowStarGeo(4.4 * s, 2 * s, 0.5 * s), threadRigid(thread)); st.castShadow = false; at(-0.46, -0.5, 1, 0.004).add(st);
+      sewItems(pillowPathItems(k => [-0.46 + 0.15 * Math.cos(k * Math.PI * 2), -0.5 + 0.17 * Math.sin(k * Math.PI * 2), 1], 0.011), thread, 0.0028);
+    }
+    if (R >= 3) {   // a lace edge under the hem, all the way round
+      const lace = cmat('#fff8ec', { roughness: 0.8, side: THREE.DoubleSide }), g = PIL_LACE || (PIL_LACE = new THREE.RingGeometry(0.0035, 0.0105, 10, 1, Math.PI, Math.PI));
+      for (let k = 0; k < 64; k++) {
+        const t = k / 64 * 4, a = -1 + 2 * (t - Math.floor(t)), [l, d] = [[a, 1], [1, -a], [-a, -1], [-1, a]][Math.floor(t) % 4];
+        const q = onCushion(l, -0.93, d, 0.004), m = new THREE.Mesh(g, lace); m.position.copy(q.p); pillowFace(m, q.n); m.castShadow = false; q.par.add(m);
+      }
+    }
+  } else if (armor === 'leather') {
+    const strap = '#3e2818', lthread = R >= 2 ? thread : '#e9d8b4', bm = R >= 1 ? gold : metalMat('#9a9aa2', 0.4);
+    // Corner guards, like a travelling trunk's, cross-stitched on
+    const corner = (l, u) => (1 - Math.abs(l)) ** 2 + (1 - Math.abs(u)) ** 2 < 0.17;
+    sew(shell(corner, 0.008, shellMat(leatherC, { roughness: 0.62 })), { style: 'x', c: lthread });
+    // The belt: stitched along both edges, a buckle with its prong, a keeper and the strap's tongue
+    sew(shell((l, u) => u < -0.46 && u > -0.64, 0.012, shellMat(strap, { roughness: 0.7 })), { inset: 0.0045, c: lthread, w: 0.0026 });
+    const bk = at(0.34, -0.55, 1, 0.016);
+    cpart(bk, roundBox(0.052, 0.046, 0.008, 0.006), bm, 0, 0, 0, 1, 1, 1);
+    cpart(bk, roundBox(0.034, 0.028, 0.01, 0.004), strap, 0, 0, 0.001, 1, 1, 1);
+    cpart(bk, BOXC, bm, 0.004, 0, 0.006, 0.03, 0.005, 0.004);
+    cpart(bk, roundBox(0.012, 0.05, 0.01, 0.003), strap, 0.046, 0, 0.002, 1, 1, 1);
+    cpart(bk, roundBox(0.07, 0.03, 0.006, 0.006), shade(strap, 1.15), 0.062, 0, 0.001, 1, 1, 1);
+    if (R >= 1) for (const d of [1, -1]) for (const sl of [-1, 1]) for (const su of [-1, 1]) cpart(at(sl * 0.78, su * 0.78, d, 0.01), SPHL, bm, 0, 0, 0, 0.0065, 0.0065, 0.004);
+    if (R >= 3) for (const d of [1, -1]) for (const sl of [-1, 1]) for (const su of [-1, 1]) for (let i = 0; i < 5; i++) {
+      const th = i / 4 * Math.PI / 2; cpart(at(sl * (1 - 0.34 * Math.cos(th)), su * (1 - 0.34 * Math.sin(th)), d, 0.01), SPHL, metalA, 0, 0, 0, 0.0055, 0.0055, 0.004);
+    }
+  } else if (armor === 'chain') {
+    // Mail over the lower half, sewn to a leather band, and a stitched tabard front and back
+    shell((l, u) => u < -0.3, 0.01, shellMat(M0[0], { map: mailTex(), metalness: 0.42, roughness: polish + 0.18 }), { uv: 9 });
+    sew(shell((l, u) => u < -0.22 && u > -0.38, 0.014, shellMat(shade(leatherC, 0.8), { roughness: 0.66 })), { inset: 0.005, c: R >= 2 ? thread : '#e9d8b4', w: 0.0026 });
+    for (const sd of [1, -1]) {
+      const tab = shell((l, u, d) => d * sd > 0.55 && Math.abs(l) < 0.34 && u < -0.24, 0.022, shellMat(L.cloth || '#2f5fa8', { roughness: 0.8, plush: true }));
+      sew(tab, { inset: 0.007, c: R >= 1 ? trim : shade(L.cloth || '#2f5fa8', 0.6) });
+    }
+  } else if (armor === 'plate') {
+    // A tin-toy knight: breastplate with a rolled lip and rivets, cups over the ears, caps on the bottom corners
+    const pA = shellMat(M0[0], { metalness: 0.6, roughness: polish }), pB = shellMat(M0[1], { metalness: 0.6, roughness: polish + 0.07 });
+    const gilt = R >= 4 ? shellMat('#f2c96a', { metalness: 0.75, roughness: 0.24 }) : pB, rivet = R >= 2 ? gold : metalB;
+    const breast = (l, u, d) => d > 0.35 && Math.abs(l) < 0.92 && u < -0.26 && !face(l, u, d);
+    shell(breast, 0.016, pA);
+    shell((l, u, d) => breast(l, u, d) && !breast(l, u + 0.1, d), 0.022, gilt);
+    if (R >= 2) shell((l, u, d) => breast(l, u, d) && u < -0.42 && u > -0.86 && [-0.5, 0, 0.5].some(c => Math.abs(l - c) < 0.13), 0.0185, pA, { lip: 0.002 });
+    for (let i = 0; i < 7; i++) cpart(at(-0.75 + i * 0.25, -0.31, 1, 0.026), SPHL, rivet, 0, 0, 0, 0.0075, 0.0075, 0.005);
+    const ear = (l, u) => Math.abs(l) > 0.6 && u > 0.6;
+    shell(ear, 0.014, pA);
+    shell((l, u) => ear(l, u) && !(Math.abs(l) > 0.7 && u > 0.7), 0.019, gilt);
+    shell((l, u) => Math.abs(l) > 0.7 && u < -0.7, 0.024, pB);
+    if (L.spikes) for (const [bn, sx] of [[tuftA, 1], [tuftB, -1]]) { const sp = cpart(bn, CONE12, metalA, sx * 0.03, 0.03, 0, 0.018, 0.06, 0.018); sp.rotation.z = -sx * 0.6; }
+  } else if (armor === 'robe') {
+    // A quilted mantle over the top of the cushion (diamonds, stitched lines, tufted buttons), with a trimmed edge
+    const robeC = shade(o.tunic || L.cloth || '#6a55a8', 0.72), mantle = (l, u, d) => (d > 0.45 && Math.abs(l) < 0.78 ? u > 0.56 : u > 0.3);
+    shell(mantle, 0.011, shellMat('#ffffff', { map: pillowPattern('quilt', robeC, R >= 2 ? '#f2cf6e' : shade(robeC, 1.45)), roughness: 0.84, plush: true }), { uv: 6 });
+    sew(shell((l, u, d) => mantle(l, u, d) && !mantle(l, u - 0.1, d), 0.02, shellMat(trim, { roughness: 0.5, metalness: 0.2 })), { inset: 0.005, w: 0.0026, c: R >= 2 ? thread : shade(trim, 0.6) });
+  }
+  // Emblems on the tabard or the breastplate
+  if (L.emblem && (armor === 'chain' || armor === 'plate')) {
+    const eg = at(0, -0.55, 1, armor === 'chain' ? 0.03 : 0.024, false);
+    const em = glowing ? glowC(L.trim || trim, 1.0) : metalMat(L.trim === '#e8d9b0' ? '#e6c35c' : (L.trim || '#e6c35c'), 0.3);
+    if (L.emblem === 1) cpart(eg, OCT, em, 0, 0, 0, 0.03, 0.04, 0.01);
+    else if (L.emblem === 2) { cpart(eg, CYL12, em, 0, 0, 0, 0.022, 0.008, 0.022).rotation.x = Math.PI / 2; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; cpart(eg, BOXC, em, Math.cos(a) * 0.034, Math.sin(a) * 0.034, 0, 0.01, 0.01, 0.006).rotation.z = a; } }
+    else { cpart(eg, roundBox(0.055, 0.05, 0.01, 0.007), em, 0, 0.006, 0, 1, 1, 1); cpart(eg, CONE4, em, 0, -0.028, 0, 0.04, 0.03, 0.007).rotation.x = Math.PI; }
+  }
+  // Legendary: gold tassels at the corners (not on an ear that wears an earring)
+  if (armor && R >= 4) for (const sx of [-1, 1]) {
+    const q = onCushion(sx * 0.97, -0.95, 0, 0.004); pillowTassel(hang(q.par, q.p.x, q.p.y, q.p.z, 0.8), '#f0c048', 0.075);
+    if (!(o.trinket && o.trinket.icon === 'ring' && sx < 0)) { const e = onEar(sx, 1, 1); pillowTassel(hang(e.bone, e.p.x + sx * 0.012, e.p.y + 0.004, e.p.z, 1), '#f0c048', 0.058); }
+  }
+
+  // ---------------------------------------------------------------- hat, helm, coif or hood
+  const hg = o.headgear;
+  if (hg === 'hat' || hg === 'nightcap') { out.hat = buildPillowHat(upper, o, null, hg === 'hat' ? 'wizard' : 'nightcap'); out.hair = out.hat.hat1; }
+  else if (hg === 'helm') {
+    // A little kettle helm between the ears: dome, brim, crest and rivets; wings when epic, a plume when legendary
+    const hair = out.hair = pivot(upper, 0, PIL.ZT - PIL.UP - 0.012, -0.005);
+    const shellM = R >= 4 ? metalMat('#ffe08a', 0.2) : metalA;
+    cpart(hair, DOME, shellM, 0, 0, 0, 0.17, 0.13, 0.15);
+    cpart(hair, TORUS2, cmat(trim, { roughness: 0.45, metalness: 0.3 }), 0, 0.004, 0, 0.18, 0.16, 0.05).rotation.x = Math.PI / 2;
+    const crest = cpart(hair, new THREE.TorusGeometry(0.13, 0.012, 6, 20, Math.PI), metalB, 0, 0, 0, 1.12, 1, 1); crest.rotation.y = Math.PI / 2;
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; cpart(hair, SPHL, gold, Math.sin(a) * 0.168, 0.012, Math.cos(a) * 0.148, 0.007, 0.007, 0.007).castShadow = false; }
+    if (R === 3) for (const sx of [-1, 1]) { const w = cpart(hair, CONE12, cmat('#f4f0e6', { roughness: 0.6 }), sx * 0.16, 0.06, -0.02, 0.03, 0.12, 0.012); w.rotation.set(0, 0, -sx * 1.0); }
+    if (R >= 4) { const pl = pivot(hair, 0, 0.12, -0.02); pl.rotation.x = -1.0; const pc = L.cape || '#b8403a'; for (let i = 0; i < 4; i++) cpart(pl, CONE12, i % 2 ? pc : shade(pc, 1.2), 0, 0.08 + i * 0.025, -i * 0.015, 0.035 - i * 0.005, 0.18, 0.024).rotation.x = -0.2 * i; }
+  } else if (hg === 'coif' || hg === 'hood') {
+    // Mail or cloth drawn over the top of the cushion: the ears stay in it, so a hood becomes a cat-eared hood
+    const coif = hg === 'coif', front = (l, u, d) => (d > 0.45 ? u > 0.44 : u > (coif ? 0.3 : 0.24));
+    const cloth = coif ? null : (armor === 'robe' ? shade(o.tunic || '#6a55a8', 0.85) : L.cape && R >= 2 ? shade(L.cape, 0.8) : shade(o.tunic || leatherC, 0.85));
+    shell(front, coif ? 0.012 : 0.025, coif ? shellMat(M0[1], { map: mailTex(), metalness: 0.55, roughness: polish + 0.12 }) : shellMat(cloth, { roughness: 0.86, plush: true }), { uv: 9 });
+    const edge = shell((l, u, d) => front(l, u, d) && !front(l, u + 0.08, d), coif ? 0.017 : 0.031, coif ? shellMat('#3a2616', { roughness: 0.8 }) : shellMat(R >= 2 ? trim : shade(cloth, 0.8), { roughness: 0.7, plush: true }));
+    if (!coif) sew(edge, { inset: 0.005, w: 0.0026, c: R >= 2 ? thread : shade(cloth, 1.35) });
+    out.hair = pivot(upper, 0, PIL.ZT - PIL.UP, 0);
+    if (!coif) { const pk = cpart(out.hair, CONE12, cmat(cloth, { roughness: 0.86 }), 0, -0.01, -0.14, 0.04, 0.16, 0.026); pk.rotation.x = -2.2; }
+  }
+
+  // ---------------------------------------------------------------- the cape
+  // Only with gear: pillowcase cloth buttoned on at the ears, animated each frame (it flies out when gliding,
+  // swings on turns and flutters). The armour's cape colour, or a long starry drape on robes; a hem in the trim
+  // colour, gem buttons from rare, and gold tassels on its corners when legendary.
+  if (o.cape || armor === 'robe') {
+    const long = armor === 'robe', rows = long ? 14 : 11, cols = 24, top = 0.7, bot = long ? -1.0 : -0.58, fancy = !!armor && R >= 2;
+    const cCol = long ? shade(o.tunic || L.cloth || '#6a55a8', 0.8) : o.cape, hem = fancy ? trim : shade(cCol, 0.72), hemKind = long ? 0 : (L.variant | 0) % 3;
+    const P = [], cl = [], F2 = [], SX = [], idx = [], cA = col(cCol), cH = col(hem), cI = col(shade(cCol, 0.86));
+    for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+      const f = r / rows, sx = -1 + 2 * c / cols, l = sx * (long ? lerp(0.6, 0.86, f) : lerp(0.5, 0.72, f)), u = lerp(top, Math.max(bot, -0.98), f), { p, n: nn } = pillowAt(l, u, -1);
+      p.addScaledVector(nn, 1.3 * s).add(V(0, 0, -7 * s * Math.pow(f, 1.6))); if (u <= -0.98) p.y += (bot + 0.98) * 0.3 * K;
+      p.y += 1.2 * s * Math.cos(sx * Math.PI * 2.5) * f * f - PIL.UP;
+      if (r === rows && hemKind === 1) p.y += 3.4 * s * (1 - Math.abs(Math.sin(Math.PI * (sx + 1) * 2)));   // four scallops
+      if (r === rows && hemKind === 2) p.y += 3.8 * s * [0, 0.5, 1, 0.5][c % 4];                        // dagged points
+      P.push(p.x, p.y, p.z); F2.push(f); SX.push(sx);
+      const k = r >= rows - (fancy ? 1 : 0) && fancy ? cH : r === rows ? cH : r === 0 ? cI : cA; cl.push(k.r, k.g, k.b);
+      if (r < rows && c < cols) { const i = r * (cols + 1) + c; idx.push(i, i + cols + 1, i + 1, i + 1, i + cols + 1, i + cols + 2); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setIndex(idx); g.computeVertexNormals(); g.userData.own = true;
+    const cape = out.cape = new THREE.Mesh(g, cmat('#ffffff', { vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 })); cape.castShadow = true; cape.frustumCulled = false; cape.userData.solo = true; upper.add(cape);
+    cape.userData.pcape = { rest: Float32Array.from(P), f: F2, sx: SX, len: (top - bot) * 0.6 * K, long, cols, rows, tassels: [] };
+    for (const sx of [-1, 1]) pillowButton(at(sx * (long ? 0.6 : 0.5), top - 0.03, -1, 1.9 * s), 0.02, fancy ? gold : '#6b4a2e', fancy ? shade(trim, 0.7) : '#eadcc0', fancy ? glowC(L.gem || '#ff5a4a', 1.2) : null);
+    if (armor && R >= 4) for (const c of [0, cols]) cape.userData.pcape.tassels.push({ p: pillowTassel(cape, '#f0c048', 0.06), i: rows * (cols + 1) + c });
+    if (long && L.runes) for (let i = 0; i < 7; i++) {
+      const r = [5, 8, 11][i % 3], c = Math.round(2 + i * (cols - 4) / 6), st = new THREE.Mesh(pillowStarGeo(0.012, 0.005, 0.003), glowC(L.glow || L.gem || '#8ff0ff', 1.4));
+      st.userData.ci = r * (cols + 1) + c; st.castShadow = false; cape.add(st);
+    }
+  }
+
+  // ---------------------------------------------------------------- trinkets
+  const tr = o.trinket;
+  if (tr) {
+    const TL = tr.look || ItemLook.make(tr), gd = tr.rarity >= 2 || TL.variant % 2 === 0, mt = metalMat(gd ? '#f2c14e' : '#d5dae4', 0.25), gm = glowC(TL.gem, tr.rarity >= 2 ? 1.6 : 0.8);
+    if (tr.icon === 'ring') {
+      // An earring through the seam of an ear corner: a hoop with a gem (or a pearl) dangling from it
+      const e = onEar(-1, 1, 0.97), h = hang(e.bone, e.p.x - 0.008, e.p.y - 0.004, e.p.z, 1.3); out.earring = h; h.scale.setScalar(1.3);
+      cpart(h, TORUS2, mt, 0, -0.022, 0, 0.022, 0.022, 0.028);
+      if (TL.variant === 2) cpart(h, TORUS2, mt, 0, -0.02, 0, 0.016, 0.016, 0.02).rotation.y = Math.PI / 2;
+      if (TL.variant === 1) cpart(h, SPHL, cmat('#f6f0e6', { roughness: 0.22, metalness: 0.1 }), 0, -0.052, 0, 0.011, 0.011, 0.011);
+      else cpart(h, OCT, gm, 0, -0.052, 0, 0.011, 0.016, 0.011);
+      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.12, 0.55); gs.position.y = -0.05; h.add(gs); }
+    } else if (tr.icon === 'amulet') {
+      // A brooch on a safety pin under the smile: two ribbon tails, and the pendant hanging from them
+      const lift = armor === 'plate' ? 0.024 : armor === 'chain' ? 0.018 : armor === 'leather' ? 0.01 : 0.007;
+      const q = onCushion(-0.44, -0.38, 1, lift), pd = pivot(q.par, q.p.x, q.p.y, q.p.z); pillowFace(pd, q.n); pd.scale.setScalar(1.3);
+      const pin = metalMat(gd ? '#f2c14e' : '#dfe3ea', 0.22), rb = ['#8a2a3a', '#2a4a8a', '#2f6a3a'][TL.variant | 0];
+      cpart(pd, CYL12, pin, 0, 0.016, 0.003, 0.0019, 0.05, 0.0019).rotation.z = Math.PI / 2;
+      cpart(pd, CYL12, pin, 0.002, 0.011, 0.0055, 0.0019, 0.044, 0.0019).rotation.z = Math.PI / 2;
+      cpart(pd, TORUS2, pin, -0.026, 0.0135, 0.004, 0.0048, 0.0048, 0.007).rotation.y = Math.PI / 2;
+      cpart(pd, roundBox(0.011, 0.012, 0.007, 0.003), pin, 0.027, 0.0135, 0.004, 1, 1, 1);
+      for (const sx of [-1, 1]) cpart(pd, BOXC, rb, sx * 0.008, 0, 0.002, 0.012, 0.032, 0.002, { roughness: 0.6 }).rotation.z = sx * 0.28;
+      const h = hang(pd, 0, -0.012, 0.004, 0.45, { flat: true });
+      if (tr.rarity >= 2) {   // a pleated rosette behind the pendant
+        cpart(h, CYL12, rb, 0, -0.018, 0.001, 0.026, 0.004, 0.026, { roughness: 0.6 }).rotation.x = Math.PI / 2;
+        for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; cpart(h, BOXC, shade(rb, 1.3), Math.cos(a) * 0.022, -0.018 + Math.sin(a) * 0.022, 0.003, 0.012, 0.005, 0.003, { roughness: 0.6 }).rotation.z = a; }
+      }
+      const py = -0.018, pz = 0.007;
+      if (TL.variant === 1) cpart(h, SPH3, mt, 0, py, pz, 0.016, 0.021, 0.007); else if (TL.variant === 2) cpart(h, OCT, mt, 0, py, pz, 0.021, 0.021, 0.007); else cpart(h, CYL12, mt, 0, py, pz, 0.018, 0.007, 0.018).rotation.x = Math.PI / 2;
+      cpart(h, OCT, gm, 0, py, pz + 0.006, 0.009, 0.012, 0.005);
+      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.16, 0.55); gs.position.set(0, py, 0.02); h.add(gs); }
+    } else {
+      // A keychain on a loop of tape sewn into the side seam: a split ring, two links and the charm
+      const q = onCushion(-1, 0.02, -0.3, 0.002);
+      cpart(q.par, roundBox(0.018, 0.024, 0.008, 0.003), '#c8b48a', q.p.x - 0.006, q.p.y, q.p.z, 1, 1, 1, { roughness: 0.85 });
+      const h = hang(q.par, q.p.x - 0.014, q.p.y - 0.008, q.p.z, 1.1), cy = -0.078;
+      cpart(h, TORUS2, mt, 0, -0.012, 0, 0.011, 0.011, 0.014);
+      for (let i = 0; i < 2; i++) cpart(h, TORUS2, mt, 0, -0.03 - i * 0.012, 0, 0.005, 0.008, 0.008).rotation.y = i % 2 ? 0 : Math.PI / 2;
+      if (TL.variant === 0) { for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; cpart(h, CONE4, mt, Math.sin(a) * 0.02, cy + Math.cos(a) * 0.02, 0, 0.014, 0.024, 0.006).rotation.z = -a; } }
+      else if (TL.variant === 1) { const m = cpart(h, new THREE.TorusGeometry(1, 0.35, 6, 12, Math.PI * 1.3), mt, 0, cy, 0, 0.028, 0.028, 0.028); m.rotation.z = 0.8; }
+      else cpart(h, SPH3, gm, 0, cy - 0.005, 0, 0.018, 0.032, 0.008);
+      cpart(h, OCT, gm, 0, cy, 0.01, 0.011, 0.014, 0.008);
+      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.14, 0.5); gs.position.y = cy; h.add(gs); }
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- the pillow
 function buildPillowModel(o = {}) {
   const V = (x, y, z) => new THREE.Vector3(x, y, z), K = PIL.K, s = PIL.s;
@@ -17132,23 +17468,28 @@ function buildPillowModel(o = {}) {
 
   // ---------------------------------------------------------------- the cushion
   const S = pillowSurface(), n = S.L.length;
-  const bodyCol = armor === 'tunic' ? mixHex(PIL_CREAM, L.cloth || '#3f74b8', 0.7) : armor === 'robe' ? mixHex(PIL_CREAM, L.cloth || '#6a55a8', 0.55) : PIL_CREAM;
-  const base = col(bodyCol), cols = new Float32Array(n * 3), cc = new THREE.Color();
+  // A pillowcase is the cushion's own fabric: plain dyed, ticking-striped or polka-dotted (the face stays on top)
+  const caseCloth = L.cloth || '#3f74b8', pat = armor === 'tunic' ? [null, 'ticking', 'dots'][(L.variant | 0) % 3] : null;
+  const caseMap = pat === 'ticking' ? pillowPattern('ticking', '#f6efe0', mixHex(caseCloth, '#ffffff', 0.12)) : pat === 'dots' ? pillowPattern('dots', mixHex(PIL_CREAM, caseCloth, 0.62), '#f8f1e2') : null;
+  const bodyCol = caseMap ? '#ffffff' : armor === 'tunic' ? mixHex(PIL_CREAM, caseCloth, 0.7) : armor === 'robe' ? mixHex(PIL_CREAM, L.cloth || '#6a55a8', 0.55) : PIL_CREAM;
+  const base = col(bodyCol), cols = new Float32Array(n * 3), cc = new THREE.Color(), bodyUV = caseMap ? new Float32Array(n * 2) : null;
   for (let i = 0; i < n; i++) {
-    const l = S.L[i], u = S.U[i], d = S.D[i], x = S.pos[i * 3], y = S.pos[i * 3 + 1];
+    const l = S.L[i], u = S.U[i], d = S.D[i], x = S.pos[i * 3], y = S.pos[i * 3 + 1], z = S.pos[i * 3 + 2];
     const e = pillowWeights(x, y)[2] + pillowWeights(x, y)[3], rim = 1 - smooth(0.0, 0.3, Math.abs(d));
     const mottle = (hashInts(Math.round(l * 40), Math.round(u * 40), Math.round(d * 40)) % 1000) / 1000;
     const k = (1 + pillowPleat(l, u, d) * 0.07) * (1 - 0.06 * rim) * (1 - 0.05 * e) * (1 - 0.08 * smooth(-0.55, -1, u)) * (0.985 + mottle * 0.03);
     cc.copy(base).multiplyScalar(k); cols.set([cc.r, cc.g, cc.b], i * 3);
+    if (bodyUV) { const al = Math.abs(l), au = Math.abs(u), ad = Math.abs(d); bodyUV.set(ad >= al && ad >= au ? [x * 7, y * 7] : al >= au ? [z * 7, y * 7] : [x * 7, z * 7], i * 2); }
   }
-  const bodyMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, skinning: true }), { cutY: 9 }); bodyMat.userData.plush = true;
-  const bodyMesh = pillowSkin(pillowGeo(S.pos.slice(), S.idx, { color: new THREE.BufferAttribute(cols, 3) }), bodyMat, cushion); skinned.push(bodyMesh);
+  const bodyMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, skinning: true, map: caseMap }), { cutY: 9 }); bodyMat.userData.plush = true;
+  const bodyMesh = pillowSkin(pillowGeo(S.pos.slice(), S.idx, Object.assign({ color: new THREE.BufferAttribute(cols, 3) }, bodyUV ? { uv: new THREE.BufferAttribute(bodyUV, 2) } : {})), bodyMat, cushion); skinned.push(bodyMesh);
   // Stitched piping round the rim: trimmed on uncommon gear and up, glowing on epic and legendary
   {
     const pts = [], C = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
     for (let i = 0; i < 4; i++) { const [l0, u0] = C[i], [l1, u1] = C[(i + 1) % 4]; for (let k = 0; k < 40; k++) pts.push(pillowPoint(lerp(l0, l1, k / 40), lerp(u0, u1, k / 40), 0)); }
     const segs = IS_TOUCH ? 200 : 320, g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), segs, 0.95 * s, 6, true), P = g.attributes.position;
-    const pipe = col(armor && R >= 1 ? mixHex(bodyCol, trim, 0.75) : shade(bodyCol, 0.72)), thread = col(armor && R >= 1 ? shade(trim, 0.7) : shade(bodyCol, 0.5)), sc = new Float32Array(P.count * 3);
+    const pb = caseMap ? caseCloth : bodyCol;
+    const pipe = col(armor && R >= 1 ? mixHex(pb, trim, 0.75) : shade(pb, 0.72)), thread = col(armor && R >= 1 ? shade(trim, 0.7) : shade(pb, 0.5)), sc = new Float32Array(P.count * 3);
     for (let i = 0; i <= segs; i++) for (let j = 0; j <= 6; j++) { const c = Math.floor(i / 2) % 2 ? thread : pipe; sc.set([c.r, c.g, c.b], (i * 7 + j) * 3); }
     g.setAttribute('color', new THREE.BufferAttribute(sc, 3)); g.userData.own = true;
     const pm = patchMaterial(new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, roughness: 0.85, skinning: true }, glowing ? { emissive: glowCol, emissiveIntensity: 0.9 } : {})), { cutY: 9 }); pm.userData.plush = true;
@@ -17164,116 +17505,10 @@ function buildPillowModel(o = {}) {
     cpart(tg, roundBox(0.055, 0.03, 0.004, 0.0015), '#f4f0e6', 0.026, 0, 0, 1, 1, 1, { roughness: 0.9 }).castShadow = false;
     cpart(tg, BOXC, '#c0392b', 0.036, 0.004, 0, 0.012, 0.004, 0.0046).castShadow = false; cpart(tg, BOXC, '#8a8070', 0.036, -0.005, 0, 0.016, 0.002, 0.0046).castShadow = false; }
 
-  // ---------------------------------------------------------------- what the pillow wears
-  const shellMat = (c, o2 = {}) => { const m = patchMaterial(new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8, skinning: true }, o2)), { cutY: 9 }); if (o2.metalness > 0.2) { m.envMap = ENV.tex; m.envMapIntensity = 1.35; } return m; };
-  const shell = (mask, off, mat, opts) => { const m = pillowSkin(pillowShell(mask, off, opts), mat, cushion); skinned.push(m); return m; };
-  const face = (l, u, d) => d > 0.4 && Math.abs(l) < 0.7 && u > -0.22 && u < 0.5;   // keep the face clear
-  if (armor === 'tunic') {
-    // A pillowcase: tinted cloth (above), a hem band at the base and two wooden buttons
-    shell((l, u) => u < -0.72 && u > -0.9, 0.009, shellMat(shade(L.cloth || '#3f74b8', 0.8)));
-    for (const x of [-0.17, 0.17]) { const b = onCushion(x, -0.52, 1, 0.006), bt = pivot(b.par, b.p.x, b.p.y, b.p.z); pillowFace(bt, b.n); cpart(bt, CYL12, '#8a5a30', 0, 0, 0, 0.018, 0.008, 0.018).rotation.x = Math.PI / 2; for (const a of [0.8, -0.8]) cpart(bt, BOXC, '#f0e2c0', 0, 0, 0.005, 0.02, 0.003, 0.002).rotation.z = a; }
-  } else if (armor === 'leather') {
-    // Leather patches sewn over the corners and a strap round the middle with a brass buckle
-    const lm = shellMat(leatherC, { roughness: 0.62 });
-    shell((l, u) => Math.abs(l) > 0.62 && Math.abs(u) > 0.62, 0.008, lm);
-    shell((l, u) => u < -0.46 && u > -0.64, 0.012, shellMat('#3e2818', { roughness: 0.7 }));
-    const b = onCushion(0.35, -0.55, 1, 0.016), bk = pivot(b.par, b.p.x, b.p.y, b.p.z); pillowFace(bk, b.n);
-    cpart(bk, roundBox(0.05, 0.044, 0.01, 0.006), gold, 0, 0, 0, 1, 1, 1); cpart(bk, roundBox(0.03, 0.024, 0.012, 0.004), '#3e2818', 0, 0, 0.002, 1, 1, 1);
-  } else if (armor === 'chain') {
-    // A mail skirt round the lower half, and a tabard with its emblem hanging down the front
-    shell((l, u, d) => u < -0.3, 0.01, shellMat(M0[1], { map: mailTex(), metalness: 0.55, roughness: polish + 0.12 }), { uv: 9 });
-    shell((l, u, d) => d > 0.55 && Math.abs(l) < 0.34 && u < -0.24, 0.022, shellMat(L.cloth || '#2f5fa8', { roughness: 0.8 }));
-    shell((l, u, d) => d > 0.55 && Math.abs(l) < 0.34 && u < -0.24 && (Math.abs(l) > 0.26 || u > -0.32), 0.026, shellMat(trim, { roughness: 0.5, metalness: 0.15 }));
-  } else if (armor === 'plate') {
-    // A toy knight: a breastplate, capped bottom corners and metal ear caps (spiked when epic)
-    shell((l, u, d) => d > 0.35 && Math.abs(l) < 0.92 && u < -0.26 && !face(l, u, d), 0.016, shellMat(M0[0], { metalness: 0.6, roughness: polish }));
-    shell((l, u) => Math.abs(l) > 0.7 && u < -0.7, 0.024, shellMat(M0[1], { metalness: 0.6, roughness: polish + 0.07 }));
-    shell((l, u) => Math.abs(l) > 0.6 && u > 0.6, 0.014, shellMat(M0[0], { metalness: 0.6, roughness: polish }));
-    for (const x of [-0.7, -0.35, 0.35, 0.7]) { const r = onCushion(x, -0.3, 0.85, 0.02), rv = pivot(r.par, r.p.x, r.p.y, r.p.z); cpart(rv, SPHL, gold, 0, 0, 0, 0.009, 0.009, 0.009).castShadow = false; }
-    if (L.spikes) for (const [bn, sx] of [[tuftA, 1], [tuftB, -1]]) { const sp = cpart(bn, CONE12, metalA, sx * 0.03, 0.03, 0, 0.018, 0.06, 0.018); sp.rotation.z = -sx * 0.6; }
-  } else if (armor === 'robe') {
-    // A wizard's mantle round the shoulders of the cushion, trimmed
-    shell((l, u) => u > 0.42 && u < 0.66, 0.014, shellMat(shade(o.tunic || L.cloth || '#6a55a8', 0.72), { roughness: 0.82 }));
-    shell((l, u) => u > 0.42 && u < 0.48, 0.018, shellMat(trim, { roughness: 0.5, metalness: 0.2 }));
-  }
-  if (L.emblem && (armor === 'chain' || armor === 'plate')) {
-    const e = onCushion(0, -0.55, 1, armor === 'chain' ? 0.03 : 0.024), eg = pivot(e.par, e.p.x, e.p.y, e.p.z); pillowFace(eg, e.n);
-    const em = glowing ? glowC(L.trim || trim, 1.0) : metalMat(L.trim === '#e8d9b0' ? '#e6c35c' : (L.trim || '#e6c35c'), 0.3);
-    if (L.emblem === 1) cpart(eg, OCT, em, 0, 0, 0, 0.03, 0.04, 0.01);
-    else if (L.emblem === 2) { cpart(eg, CYL12, em, 0, 0, 0, 0.022, 0.008, 0.022).rotation.x = Math.PI / 2; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; cpart(eg, BOXC, em, Math.cos(a) * 0.034, Math.sin(a) * 0.034, 0, 0.01, 0.01, 0.006).rotation.z = a; } }
-    else { cpart(eg, roundBox(0.055, 0.05, 0.01, 0.007), em, 0, 0.006, 0, 1, 1, 1); cpart(eg, CONE4, em, 0, -0.028, 0, 0.04, 0.03, 0.007).rotation.x = Math.PI; }
-  }
+  // ---------------------------------------------------------------- what the pillow wears (see "the pillow's wardrobe")
+  const W = pillowWardrobe({ o, R, L, armor, trim, M0, polish, metalA, metalB, gold, leatherC, glowing, bodyCol, caseMap, caseCloth, cushion, lower, upper, tuftA, tuftB, skinned, onCushion });
+  const { hair, hat, cape } = W;
 
-  // ---------------------------------------------------------------- hat, helm, coif or hood
-  const hg = o.headgear;
-  let hair = null, hat = null;
-  if (!hg || hg === 'hat') { hat = buildPillowHat(upper, o, null, hg === 'hat' ? 'wizard' : 'nightcap'); hair = hat.hat1; }
-  else if (hg === 'helm') {
-    // A little kettle helm between the ears: dome, brim, crest and rivets; wings when epic, a plume when legendary
-    hair = pivot(upper, 0, PIL.ZT - PIL.UP - 0.012, -0.005);
-    const shellM = R >= 4 ? metalMat('#ffe08a', 0.2) : metalA;
-    cpart(hair, DOME, shellM, 0, 0, 0, 0.17, 0.13, 0.15);
-    cpart(hair, TORUS2, cmat(trim, { roughness: 0.45, metalness: 0.3 }), 0, 0.004, 0, 0.18, 0.16, 0.05).rotation.x = Math.PI / 2;
-    const crest = cpart(hair, new THREE.TorusGeometry(0.13, 0.012, 6, 20, Math.PI), metalB, 0, 0, 0, 1.12, 1, 1); crest.rotation.y = Math.PI / 2;
-    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; cpart(hair, SPHL, gold, Math.sin(a) * 0.168, 0.012, Math.cos(a) * 0.148, 0.007, 0.007, 0.007).castShadow = false; }
-    if (R === 3) for (const sx of [-1, 1]) { const w = cpart(hair, CONE12, cmat('#f4f0e6', { roughness: 0.6 }), sx * 0.16, 0.06, -0.02, 0.03, 0.12, 0.012); w.rotation.set(0, 0, -sx * 1.0); }
-    if (R >= 4) { const pl = pivot(hair, 0, 0.12, -0.02); pl.rotation.x = -1.0; const pc = L.cape || '#b8403a'; for (let i = 0; i < 4; i++) cpart(pl, CONE12, i % 2 ? pc : shade(pc, 1.2), 0, 0.08 + i * 0.025, -i * 0.015, 0.035 - i * 0.005, 0.18, 0.024).rotation.x = -0.2 * i; }
-  } else if (hg === 'coif' || hg === 'hood') {
-    // Mail or cloth drawn over the top of the cushion: the ears stay in it, so a hood becomes a cat-eared hood
-    const coif = hg === 'coif', front = (l, u, d) => (d > 0.45 ? u > 0.44 : u > (coif ? 0.3 : 0.24));
-    const cloth = coif ? null : (armor === 'robe' ? shade(o.tunic || '#6a55a8', 0.85) : L.cape && R >= 2 ? shade(L.cape, 0.8) : shade(o.tunic || leatherC, 0.85));
-    shell(front, coif ? 0.012 : 0.02, coif ? shellMat(M0[1], { map: mailTex(), metalness: 0.55, roughness: polish + 0.12 }) : shellMat(cloth, { roughness: 0.86 }), { uv: 9 });
-    shell((l, u, d) => front(l, u, d) && !front(l, u + 0.08, d), coif ? 0.017 : 0.026, coif ? shellMat('#3a2616', { roughness: 0.8 }) : shellMat(R >= 2 ? trim : shade(cloth, 0.8), { roughness: 0.7 }));
-    hair = pivot(upper, 0, PIL.ZT - PIL.UP, 0);
-    if (!coif) { const pk = cpart(hair, CONE12, cmat(cloth, { roughness: 0.86 }), 0, -0.01, -0.14, 0.04, 0.16, 0.026); pk.rotation.x = -2.2; }
-  }
-
-  // ---------------------------------------------------------------- the cape
-  // A cloth panel on the back, animated each frame: it flies out when gliding, swings on turns and flutters.
-  // Red by default, the armour's cape colour when it has one, a long starry drape on robes; a gold hem on rare gear.
-  let cape = null;
-  {
-    const long = armor === 'robe', rows = long ? 14 : 11, colsN = 14, top = 0.7, bot = long ? -1.0 : -0.58;
-    const cCol = long ? shade(o.tunic || L.cloth || '#6a55a8', 0.8) : (o.cape || '#b8433f'), hem = armor && R >= 2 ? trim : shade(cCol, 0.72);
-    const P = [], cl = [], F2 = [], SX = [], idx = [], cA = col(cCol), cH = col(hem), cI = col(shade(cCol, 0.86));
-    for (let r = 0; r <= rows; r++) for (let c = 0; c <= colsN; c++) {
-      const f = r / rows, sx = -1 + 2 * c / colsN, l = sx * (long ? lerp(0.6, 0.86, f) : lerp(0.5, 0.72, f)), u = lerp(top, Math.max(bot, -0.98), f), { p, n: nn } = pillowAt(l, u, -1);
-      p.addScaledVector(nn, 1.3 * s).add(V(0, 0, -7 * s * Math.pow(f, 1.6))); if (u <= -0.98) p.y += (bot + 0.98) * 0.3 * K;
-      p.y += 1.2 * s * Math.cos(sx * Math.PI * 2.5) * f * f - PIL.UP;
-      P.push(p.x, p.y, p.z); F2.push(f); SX.push(sx);
-      const k = r >= rows - (armor && R >= 2 ? 1 : 0) && armor && R >= 2 ? cH : r === 0 ? cI : cA; cl.push(k.r, k.g, k.b);
-      if (r < rows && c < colsN) { const i = r * (colsN + 1) + c; idx.push(i, i + colsN + 1, i + 1, i + 1, i + colsN + 1, i + colsN + 2); }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setIndex(idx); g.computeVertexNormals(); g.userData.own = true;
-    cape = new THREE.Mesh(g, cmat('#ffffff', { vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 })); cape.castShadow = true; cape.frustumCulled = false; cape.userData.solo = true; upper.add(cape);
-    cape.userData.pcape = { rest: Float32Array.from(P), f: F2, sx: SX, len: (top - bot) * 0.6 * K, long };
-    for (const sx of [-1, 1]) { const q = onCushion(sx * (long ? 0.6 : 0.5), top - 0.03, -1, 1.6 * s), cp = cpart(q.par, SPH3, R >= 2 && armor ? gold : metalMat('#f4c95d', 0.3), q.p.x, q.p.y, q.p.z, 0.018, 0.018, 0.018); if (R >= 2 && armor) cpart(q.par, OCT, glowC(L.gem || '#ff5a4a', 1.2), q.p.x, q.p.y, q.p.z - 0.014, 0.008, 0.01, 0.006).castShadow = false; }
-    if (long && L.runes) for (let i = 0; i < 7; i++) { const f = 0.35 + (i % 3) * 0.2, sx = -0.7 + i * 0.23, st = new THREE.Mesh(pillowStarGeo(0.012, 0.005, 0.003), glowC(glowCol, 1.4)); st.userData.cf = [f, sx]; st.castShadow = false; cape.add(st); }
-  }
-
-  // ---------------------------------------------------------------- trinkets, orbiters, motes
-  const tr = o.trinket;
-  if (tr) {
-    const TL = tr.look || ItemLook.make(tr), gd = tr.rarity >= 2 || TL.variant % 2 === 0, mt = metalMat(gd ? '#f2c14e' : '#d5dae4', 0.25), gm = glowC(TL.gem, tr.rarity >= 2 ? 1.6 : 0.8);
-    if (tr.icon === 'ring') {   // a ring floats beside the left side, turning slowly
-      const rp = pivot(handL, 0, 0.02, 0.03); rp.userData.ring = true;
-      const r = cpart(rp, TORUS2, mt, 0, 0, 0, 0.028, 0.028, 0.03); r.rotation.y = Math.PI / 2; cpart(rp, OCT, gm, 0, 0.03, 0, 0.012, 0.016, 0.012);
-      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.16, 0.55); gs.position.y = 0.03; rp.add(gs); }
-    } else if (tr.icon === 'amulet') {   // a pendant pinned below the smile on a short ribbon
-      const a = onCushion(0, -0.32, 1, armor === 'chain' ? 0.03 : 0.012), pd = pivot(a.par, a.p.x, a.p.y, a.p.z); pillowFace(pd, a.n);
-      cpart(pd, BOXC, '#8a2a3a', 0, 0.02, 0, 0.012, 0.04, 0.004).castShadow = false;
-      if (TL.variant === 1) cpart(pd, SPH3, mt, 0, 0, 0.004, 0.026, 0.034, 0.01); else if (TL.variant === 2) cpart(pd, OCT, mt, 0, 0, 0.004, 0.034, 0.034, 0.01); else cpart(pd, CYL12, mt, 0, 0, 0.004, 0.028, 0.01, 0.028).rotation.x = Math.PI / 2;
-      cpart(pd, OCT, gm, 0, 0, 0.012, 0.015, 0.02, 0.008);
-      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.2, 0.55); gs.position.z = 0.02; pd.add(gs); }
-    } else {   // a charm dangling from the left side seam
-      const c = onCushion(-1, -0.45, 0.25, 0.004), ch = pivot(c.par, c.p.x, c.p.y, c.p.z);
-      cpart(ch, CYL12, '#6b4226', 0, -0.025, 0, 0.003, 0.05, 0.003);
-      if (TL.variant === 0) { for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; cpart(ch, CONE4, mt, Math.sin(a) * 0.02, -0.07 + Math.cos(a) * 0.02, 0, 0.014, 0.024, 0.006).rotation.z = -a; } }
-      else if (TL.variant === 1) { const m = cpart(ch, new THREE.TorusGeometry(1, 0.35, 6, 12, Math.PI * 1.3), mt, 0, -0.07, 0, 0.028, 0.028, 0.028); m.rotation.z = 0.8; }
-      else cpart(ch, SPH3, gm, 0, -0.075, 0, 0.018, 0.032, 0.008);
-      cpart(ch, OCT, gm, 0, -0.07, 0.01, 0.011, 0.014, 0.008);
-    }
-  }
   let orbit = null;
   if (armor === 'robe' && R >= 3) {
     orbit = pivot(body, 0, 0.62, 0);
@@ -17299,7 +17534,7 @@ function buildPillowModel(o = {}) {
   const rig = { root, body, torso, head: upper, legL, legR, armL, armR, hand, handL, chest: bodyMesh, cape, face: { eyes: new THREE.Object3D(), brows: new THREE.Object3D(), mouth: new THREE.Object3D() },
     walk: 0, weapon: null, t: Math.random() * 10, blink: rand(1, 4), squint: 0, idle: null, look: o,
     hero: { knees, elbows, hair: hair || pivot(upper, 0, PIL.ZT - PIL.UP, 0), tails: [], scarf: [], orbit, fin: null, fingers: null, motes },
-    pillow: { cushion, lower, upper, tufts: [tuftA, tuftB], hat, cape, wind, wispR, wispL, faceMesh, bodyMesh } };
+    pillow: { cushion, lower, upper, tufts: [tuftA, tuftB], hat, cape, wind, wispR, wispL, faceMesh, bodyMesh, dangle: W.dangle, earring: W.earring } };
   // Bind every skinned part to one skeleton in the rest pose
   root.updateMatrixWorld(true);
   const skel = new THREE.Skeleton(bones);
@@ -17435,7 +17670,19 @@ function pillowAnimate(rig, dt, moving, T, speed) {
       pos.setXYZ(i, R0[i * 3] + sway * f * f * 0.14, R0[i * 3 + 1] + back * 0.4 * f + dk * 0.02 * f, R0[i * 3 + 2] - back - wave);
     }
     pos.needsUpdate = true; Cm.geometry.computeVertexNormals();
-    for (const st of Cm.children) if (st.userData.cf) { const [f, sx] = st.userData.cf, c = Math.round(((sx / lerp(0.6, 0.86, f)) + 1) / 2 * 14), r = Math.round(f * (CD.long ? 14 : 11)), i = r * 15 + clamp(c, 0, 14); st.position.set(pos.getX(i), pos.getY(i), pos.getZ(i) - 0.004); st.rotation.y = Math.PI; }
+    for (const st of Cm.children) if (st.userData.ci !== undefined) { const i = st.userData.ci; st.position.set(pos.getX(i), pos.getY(i), pos.getZ(i) - 0.004); st.rotation.y = Math.PI; }
+    for (const t of CD.tassels) { t.p.position.set(pos.getX(t.i), pos.getY(t.i), pos.getZ(t.i)); t.p.rotation.set(CD.flare * 0.7 - rig.torso.rotation.x, 0, -sway * 0.3); }
+  }
+  // Whatever hangs (earrings, pendants, keychains, tassels) swings: it keeps hanging down as the cushion leans,
+  // trails behind the glide and a swing, and swings out on turns
+  if (P.dangle && P.dangle.length) {
+    const lean = rig.torso.rotation.x, roll = rig.torso.rotation.z, turn = clamp((A.yawV || 0) * 0.05, -0.45, 0.45);
+    for (const D of P.dangle) {
+      const tx = -lean + (0.3 + 0.25 * run) * mv * D.k + (rig.attacking ? 0.2 * D.k : 0) + Math.sin(T * 2.1 + D.ph) * 0.04 * D.k;
+      const tz = -roll + turn * D.k + Math.sin(T * 1.7 + D.ph) * 0.03 * D.k;
+      D.v += ((tx - D.a) * 38 - D.v * 3.2) * d; D.a += D.v * d; D.w += ((tz - D.b) * 38 - D.w * 3.2) * d; D.b += D.w * d;
+      D.p.rotation.set(D.flat ? Math.min(D.a, 0.08) : D.a, 0, D.b);
+    }
   }
   // The cushion of wind: wisps swirl faster and trail back when gliding, fade when resting on the ground or down
   const W = P.wind, gone = Math.max(dk, P.onGround || 0);
