@@ -5715,7 +5715,8 @@ function equipHero(rig, player) {
   const keep = { root: rig.root, blob: rig.blob, walk: rig.walk || 0 };
   for (const k of Object.keys(nr)) if (k !== 'root') rig[k] = nr[k];
   Object.assign(rig, keep);
-  rig.weapon = buildWeapon(player.equip.weapon); rig.weapon.rotation.x = Math.PI / 2 - 0.3; rig.hand.add(rig.weapon); rig.weaponRest = rig.weapon.rotation.clone();
+  rig.weapon = buildWeapon(player.equip.weapon); if (nr.pillow) rig.weapon.rotation.set(0.45, 0, 0.1); else rig.weapon.rotation.x = Math.PI / 2 - 0.3;   // a pillow's floats upright at its side
+  rig.hand.add(rig.weapon); rig.weaponRest = rig.weapon.rotation.clone();
   rig.weaponItem = player.equip.weapon;
   addOutlines(rig.body);
 }
@@ -13044,7 +13045,7 @@ const MIRROR = {
     for (let i = list.length; i < 2; i++) this.pads[i].visible = false;
     this.rim.color.set(rc);
     // Frame the whole hero (and a legendary crown); a single hero gets a closer look
-    const d = list.length > 1 ? 4.7 : 4.5, fy = list.length > 1 ? 0.84 : 0.98;
+    const pw = list.some(r => r.pillow), d = (list.length > 1 ? 4.7 : 4.5) * (pw ? 0.8 : 1), fy = pw ? (list.length > 1 ? 0.66 : 0.7) : list.length > 1 ? 0.84 : 0.98;   // the pillow is shorter: closer, lower
     this.cam.position.set(0, fy + 0.55, d); this.cam.lookAt(0, fy, 0);
     const cloud = U.uCloud.value, cut = U.uCut.value; U.uCloud.value = 0; U.uCut.value = 0;
     this.r.render(this.scene, this.cam);
@@ -13199,7 +13200,7 @@ float hdHeight(float k) {
   vec3 p = vOP;
   if (k < 0.5) return 0.0;
   // Painted miniature: only broad, soft forms; the paint (below) does the rest
-  if (k < 1.5) return hdN(p * vec3(12.0, 4.5, 12.0)) * 0.0032;                           // cloth: a few soft folds
+  if (k < 1.5) return hdN(p * vec3(12.0, 4.5, 12.0)) * (k > 1.2 ? 0.0024 : 0.0032) + (k > 1.2 ? (sin(p.x * 700.0) + sin(p.z * 700.0)) * sin(p.y * 700.0) * 0.0001 * hdFade(700.0) : 0.0);   // cloth: a few soft folds (plush: and a fine weave)
   if (k < 2.5) return (1.0 - abs(hdN(p * vec3(18.0, 34.0, 18.0)) - 0.5) * 2.0) * 0.0011;   // leather: gentle creases
   if (k < 3.5) return 0.0;                                                               // skin: smooth
   if (k < 5.5) return hdN(p * 26.0) * 0.0035;                                            // fur: soft tufts
@@ -13242,6 +13243,7 @@ function hdMaterial(mat, kind, wear = 0.5) {
           if (vDK > 2.5 && vDK < 3.5) rc *= vec3(1.25, 0.85, 0.7);
           rc = mix(rc, uElemCol * 0.75, uElemAmt) * (1.0 + uElemAmt * 1.1);
           gl_FragColor.rgb += rc * rim * (vDK > 6.5 ? 1.3 : 1.0);
+          if (abs(vDK - 1.3) < 0.04) gl_FragColor.rgb += vec3(1.0, 0.94, 0.84) * pow(1.0 - clamp(normal.z, 0.0, 1.0), 2.0) * 0.1;   // felt sheen on the pillow
           // Painted-miniature finish: curvature from how fast the normal turns against the surface
           vec3 vp = -vViewPosition, dpx = dFdx(vp), dpy = dFdy(vp);
           float curv = (dot(dFdx(normal), dpx) + dot(dFdy(normal), dpy)) / max(dot(dpx, dpx) + dot(dpy, dpy), 1e-9);
@@ -16236,6 +16238,7 @@ const HD_WPN = { uWpnV: { value: new THREE.Vector3() }, uWpnC: { value: new THRE
     const G = rig.gait || (rig.gait = { knee: [0.04, 0.04], run: 0, go: 1, was: false, moving: false });
     if (moving && !G.was) G.go = 0;
     G.was = moving; G.go = Math.min(1, G.go + dt / 0.25); G.moving = moving;
+    if (rig.pillow) { pillowGait(rig, dt, moving, T, speed, G); return; }   // no legs: a glide (see "the pillow")
     if (!moving) return;
     const run = clamp((speed - 0.55) / 0.65, 0, 1), A = lerp(0.5, 0.78, run), K = lerp(0.85, 1.45, run), d = lerp(0.6, 0.46, run);
     G.run = run;
@@ -16596,7 +16599,7 @@ const HD_WPN = { uWpnV: { value: new THREE.Vector3() }, uWpnC: { value: new THRE
     mat.onBeforeCompile = (sh, r) => {
       inner(sh, r);
       sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-        if (vDK > 0.5 && vDK < 2.5) {
+        if (vDK > 0.5 && vDK < 2.5 && abs(vDK - 1.3) > 0.04) {   // (not on the pillow's plush: its seam is the piping)
           float ax = abs(vOP.x), fd = hdFade(140.0);
           float groove = 1.0 - smoothstep(0.0012, 0.0032, ax);
           float row = 1.0 - smoothstep(0.0009, 0.0024, abs(ax - 0.0085));
@@ -16779,6 +16782,740 @@ const HD_WPN = { uWpnV: { value: new THREE.Vector3() }, uWpnC: { value: new THRE
     if (Pk.t < 1.0) { s.brows = 'up'; s.mouth = 'o'; s.look = Pk.onHead ? 0 : (Pk.side > 0 ? -1 : 1); if (s.eyes === 'open' && Pk.onHead) s.eyes = 'wide'; }
     else { s.mouth = 'smile'; if (s.eyes === 'open') s.eyes = 'happy'; }
     return s;
+  };
+}
+
+// =============================================================================
+// THE PILLOW
+//   The hero is a floating pillow wizard, after the pillow characters of lelelilo.com (the unreal-wizard
+//   project's Pillow Wizard): a plump canvas cushion with pinched ear corners and soft pleats fanning out of
+//   them, stitched piping round the rim, a care tag caught in the side seam, a glossy face, a floppy
+//   nightcap with a gold band and a star on its tip, and a short cape.
+//   It has no hands or feet. It glides on a cushion of wind, and whatever a hand would hold (the weapon, a
+//   potion, the whetstone, a leaf) levitates beside it, carried by invisible "ghost" arms: every existing
+//   swing, spell, gesture and fidget still moves the things it holds. Head turns and nods bend the
+//   cushion's soft upper half, the ears flick, the hat whips, and anything that pushes the body down (sitting
+//   by the fire, kneeling, falling) makes it settle on the ground and squash instead of sinking.
+//   Armour becomes what a pillow can wear: a pillowcase, leather corner patches and a belt, a mail skirt
+//   and tabard, plate caps and a breastplate, a wizard's mantle. Rarer gear gets trimmed, then glowing, seams.
+// =============================================================================
+const PIL = { K: 0.62, HOVER: 0.14 };
+PIL.s = PIL.K / 52;                        // the reference model's centimetres, in world units
+PIL.ZB = -0.546 * PIL.K;                   // base of the cushion (cushion-centre space)
+PIL.ZT = 0.558 * PIL.K;                    // top edge between the ears
+PIL.BASE = 0.44 - (0.546 + 0.558) * PIL.K;  // the cushion's base in torso space: its top sits where shoulders were
+PIL.CY = PIL.BASE - PIL.ZB;                // its centre
+PIL.TORSO_Y = PIL.HOVER - PIL.BASE;        // the torso's height above the ground
+PIL.UP = -0.2 * PIL.K;                     // pivot of the soft upper half
+PIL.HAT = PIL.ZT - 0.07 * PIL.K;           // base of the hat
+const PIL_SHAPE = { w: 0.5, h: 0.6, dd: 0.34, pinch: 0.1, ear: 0.1, earW: 0.45, earSharp: 1, rnd: 0.45, puff: 1 };
+const PIL_CREAM = '#ece0c7';
+
+/** Soft pleats fanning out of each pinched corner, where the stuffing pulls the fabric into the seams (cm). */
+function pillowPleat(l, u, d) {
+  const face = smooth(0.55, 0.95, Math.abs(d)); if (face <= 0) return 0;
+  let off = 0;
+  for (const cl of [-1, 1]) for (const cu of [-1, 1]) {
+    const dist = Math.hypot(l - cl, u - cu), ang = Math.atan2(u - cu, l - cl);
+    off += 0.55 * Math.exp(-dist / 0.22) * (1 - smooth(0.35, 0.6, dist)) * Math.sin(ang * 11 + cl * 1.7 + cu * 0.9);
+  }
+  return off * face * (d < 0 ? -1 : 1);
+}
+/** The pillow shape: cube coordinates (l, u, d) in [-1, 1] to a point in cushion space (x right, y up, z front). */
+function pillowPoint(l, u, d, out = new THREE.Vector3()) {
+  const S = PIL_SHAPE, p = l * l, m = u * u, q = d * d;
+  const g = l * Math.sqrt(Math.max(0, 1 - m / 2 - q / 2 + m * q / 3));
+  const s_ = u * Math.sqrt(Math.max(0, 1 - q / 2 - p / 2 + q * p / 3));
+  const v = d * Math.sqrt(Math.max(0, 1 - p / 2 - m / 2 + p * m / 3));
+  const y = l + (g - l) * S.rnd, b = u + (s_ - u) * S.rnd, x = d + (v - d) * S.rnd;
+  const depth = 0.24 + 0.76 * Math.pow(Math.max(0, (1 - p) * (1 - m)), 0.45);
+  let cx = y * S.w * (1 - S.pinch * (1 - m)), cy = b * S.h * (1 - S.pinch * 0.7 * (1 - p)), cz = x * S.dd * depth * S.puff;
+  const e = smooth(1 - S.earW, 1, Math.abs(l)) * smooth(1 - S.earW, 1, u);
+  cy += e * S.ear; cx += Math.sign(l) * e * S.ear * 0.4 * S.earSharp; cz *= 1 - e * 0.45;
+  if (cy < -S.h * 0.9) cy = -S.h * 0.9 + (cy + S.h * 0.9) * 0.35;
+  return out.set(cx * PIL.K, cy * PIL.K, cz * PIL.K + pillowPleat(l, u, d) * PIL.s);
+}
+/** A point on the cushion and its outward normal (front/back faces, sides or top/bottom, by the dominant axis). */
+function pillowAt(l, u, d) {
+  const p = pillowPoint(l, u, d), r = 0.01, a = new THREE.Vector3(), b = new THREE.Vector3(), n = new THREE.Vector3();
+  const al = Math.abs(l), au = Math.abs(u), ad = Math.abs(d);
+  if (ad >= al && ad >= au) { a.subVectors(pillowPoint(l + r, u, d), p); b.subVectors(pillowPoint(l, u + r, d), p); n.crossVectors(a, b).multiplyScalar(d < 0 ? -1 : 1); }
+  else if (al >= au) { a.subVectors(pillowPoint(l, u + r, d), p); b.subVectors(pillowPoint(l, u, d + r), p); n.crossVectors(a, b).multiplyScalar(l < 0 ? -1 : 1); }
+  else { a.subVectors(pillowPoint(l, u, d + r), p); b.subVectors(pillowPoint(l + r, u, d), p); n.crossVectors(a, b).multiplyScalar(u < 0 ? -1 : 1); }
+  return { p, n: n.normalize() };
+}
+/** Skin weights (lower, upper, +x ear, -x ear) from a cushion-space position, as in the reference rig. */
+function pillowWeights(x, y) {
+  const S = PIL_SHAPE, up = smooth(PIL.ZB + 8 * PIL.s, PIL.ZB + 17 * PIL.s, y);
+  const e = smooth(1 - S.earW, 1, Math.abs(x / (S.w * PIL.K))) * smooth(1 - S.earW, 1, y / (S.h * PIL.K));
+  return [(1 - up) * (1 - e), up * (1 - e), x > 0 ? e : 0, x > 0 ? 0 : e];
+}
+/** The welded surface grid (shared by the body, the face and every shell), made once per resolution. */
+const PIL_SURF = {};
+function pillowSurface() {
+  const N = IS_TOUCH ? 16 : 24;
+  if (PIL_SURF[N]) return PIL_SURF[N];
+  const key = new Map(), L = [], Uu = [], D = [], idx = [];
+  const vid = (l, u, d) => {
+    const k = Math.round(l * 1e4) + ',' + Math.round(u * 1e4) + ',' + Math.round(d * 1e4);
+    let i = key.get(k); if (i === undefined) { i = L.length; key.set(k, i); L.push(l); Uu.push(u); D.push(d); } return i;
+  };
+  // Each face: its normal axis and two tangents with t1 x t2 = n, so the triangles wind outward
+  const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1], neg = a => a.map(v => -v);
+  const faces = [[X, Y, Z], [neg(X), Z, Y], [Y, Z, X], [neg(Y), X, Z], [Z, X, Y], [neg(Z), Y, X]];
+  for (const [n, t1, t2] of faces) {
+    const grid = [];
+    for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
+      const a = -1 + 2 * i / N, b = -1 + 2 * j / N, v = [0, 1, 2].map(k => n[k] + t1[k] * a + t2[k] * b);
+      grid.push(vid(v[0], v[1], v[2]));
+    }
+    const G = (i, j) => grid[i * (N + 1) + j];
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) idx.push(G(i, j), G(i + 1, j), G(i + 1, j + 1), G(i, j), G(i + 1, j + 1), G(i, j + 1));
+  }
+  const n = L.length, pos = new Float32Array(n * 3), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) { pillowPoint(L[i], Uu[i], D[i], v); pos.set([v.x, v.y, v.z], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return PIL_SURF[N] = { N, L, U: Uu, D, idx, pos, nrm: g.attributes.normal.array };
+}
+function pillowGeo(pos, idx, extra = {}) {
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  for (const k in extra) g.setAttribute(k, extra[k]);
+  g.setIndex(idx); g.computeVertexNormals(); g.userData.own = true; return g;
+}
+/** A shell following the cushion (armour, hoods, mantles): the triangles whose corners pass mask(l, u, d), lifted
+ *  off the surface by `off`, with a thin wall round its edge so it reads as a layer with some thickness. */
+function pillowShell(mask, off, opts = {}) {
+  const S = pillowSurface(), keep = new Map(), P = [], N = [], uv = [], tris = [], edges = new Map();
+  const use = i => {
+    let j = keep.get(i); if (j !== undefined) return j;
+    j = P.length / 3; keep.set(i, j);
+    const nx = S.nrm[i * 3], ny = S.nrm[i * 3 + 1], nz = S.nrm[i * 3 + 2], x = S.pos[i * 3] + nx * off, y = S.pos[i * 3 + 1] + ny * off, z = S.pos[i * 3 + 2] + nz * off;
+    P.push(x, y, z); N.push(nx, ny, nz);
+    const al = Math.abs(S.L[i]), au = Math.abs(S.U[i]), ad = Math.abs(S.D[i]), k = opts.uv || 6;
+    uv.push(...(ad >= al && ad >= au ? [x * k, y * k] : al >= au ? [z * k, y * k] : [x * k, z * k]));
+    return j;
+  };
+  for (let t = 0; t < S.idx.length; t += 3) {
+    const a = S.idx[t], b = S.idx[t + 1], c = S.idx[t + 2];
+    if (![a, b, c].every(i => mask(S.L[i], S.U[i], S.D[i]))) continue;
+    const A = use(a), B = use(b), C = use(c); tris.push(A, B, C);
+    for (const [e0, e1, o] of [[A, B, C], [B, C, A], [C, A, B]]) { const k = Math.min(e0, e1) + ',' + Math.max(e0, e1); edges.set(k, edges.has(k) ? null : [e0, e1, o]); }
+  }
+  // The wall: down from each boundary edge to just above the cushion
+  const wallFrom = P.length / 3, lip = opts.lip === undefined ? off - 0.002 : opts.lip;
+  for (const e of edges.values()) {
+    if (!e) continue;
+    const [a, b] = e, base = P.length / 3;
+    for (const i of [a, b]) { P.push(P[i * 3] - N[i * 3] * lip, P[i * 3 + 1] - N[i * 3 + 1] * lip, P[i * 3 + 2] - N[i * 3 + 2] * lip); N.push(0, 0, 0); uv.push(uv[i * 2], uv[i * 2 + 1]); }
+    tris.push(a, base, b, b, base, base + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(tris);
+  g.computeVertexNormals(); g.userData.own = true; g.userData.wallFrom = wallFrom;
+  return g;
+}
+/** Skin a cushion part to the pillow's four bones (weights follow the position, so every layer bends alike). */
+function pillowSkin(geo, mat, parent) {
+  const P = geo.attributes.position, n = P.count, si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { si.set([0, 1, 2, 3], i * 4); sw.set(pillowWeights(P.getX(i), P.getY(i)), i * 4); }
+  geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+  geo.clearGroups(); geo.addGroup(0, geo.index ? geo.index.count : n, 0);
+  const m = new THREE.SkinnedMesh(geo, [mat]); m.castShadow = true; m.frustumCulled = false; m.userData.solo = true;
+  parent.add(m); return m;
+}
+/** A flat, slightly puffed star (badges, the charm on the hat's tip, the cheeks). */
+const PIL_STAR = {};
+function pillowStarGeo(rOut, rIn, thick) {
+  const k = [rOut, rIn, thick].join('|'); if (PIL_STAR[k]) return PIL_STAR[k];
+  const s = new THREE.Shape();
+  for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? rIn : rOut; i ? s.lineTo(Math.cos(a) * r, Math.sin(a) * r) : s.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+  const g = new THREE.ExtrudeGeometry(s, { depth: thick, bevelEnabled: true, bevelThickness: thick * 0.45, bevelSize: rIn * 0.25, bevelSegments: 2, curveSegments: 4 });
+  g.translate(0, 0, -thick / 2); g.computeVertexNormals();
+  return PIL_STAR[k] = g;
+}
+/** Orient a part so its +z faces `n` and its +y leans toward `up`. */
+function pillowFace(obj, n, up = new THREE.Vector3(0, 1, 0)) {
+  const z = n.clone().normalize(), x = new THREE.Vector3().crossVectors(up, z); if (x.lengthSq() < 1e-6) x.set(1, 0, 0); x.normalize();
+  const y = new THREE.Vector3().crossVectors(z, x); obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+  return obj;
+}
+
+// ---------------------------------------------------------------- the face
+// Painted on a transparent decal skinned to the cushion, in the reference's style: glossy dark eyes with two
+// highlights, a small smile, and a little gold star on each cheek. The pillow has no brows, so the expressions
+// shape the eyelids instead (angry lids slant in, worried ones droop), and a hit or a fall shows dizzy ✕ eyes.
+const PIL_FACE = { l0: -0.8, l1: 0.8, u0: -0.6, u1: 0.62 };
+function pillowFaceGeo() {
+  const nl = 30, nu = 26, P = [], uv = [], idx = [], F = PIL_FACE;
+  for (let j = 0; j <= nu; j++) for (let i = 0; i <= nl; i++) {
+    const a = i / nl, b = j / nu, l = lerp(F.l0, F.l1, a), u = lerp(F.u0, F.u1, b), { p, n } = pillowAt(l, u, 1);
+    p.addScaledVector(n, 0.0035); P.push(p.x, p.y, p.z); uv.push(a, b);
+    if (i < nl && j < nu) { const k = j * (nl + 1) + i; idx.push(k, k + 1, k + nl + 2, k, k + nl + 2, k + nl + 1); }
+  }
+  return pillowGeo(new Float32Array(P), idx, { uv: new THREE.Float32BufferAttribute(uv, 2) });
+}
+function makePillowFace(o) {
+  const W = IS_TOUCH ? 256 : 512, cv = document.createElement('canvas'); cv.width = cv.height = W;
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
+  const mat = patchMaterial(new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 0.32, polygonOffset: true, polygonOffsetFactor: -3, skinning: true }), { cutY: 9 });
+  const F = { cv, g: cv.getContext('2d'), tex, o, state: '', pillow: true, mat };
+  paintPillowFace(F, { eyes: 'open', brows: 'neutral', mouth: 'smile', blush: 0.26 });
+  return F;
+}
+function paintPillowFace(F, st) {
+  const c = F.cv, g = F.g, W = c.width, k = W / 512, P = PIL_FACE;
+  const FX = l => (l - P.l0) / (P.l1 - P.l0) * 512, FY = u => (P.u1 - u) / (P.u1 - P.u0) * 512;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, W); g.setTransform(k, 0, 0, k, 0, 0);
+  const ink = '#1d1310', env = st.env || 'day', shine = env === 'fire' ? '#ffe2b8' : env === 'night' ? '#dde7ff' : '#ffffff';
+  const look = (st.look || 0) * 7, lift = st.brows === 'up' ? -5 : 0;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  // Cheeks: a soft blush when warm, cold or flustered, and a little gold star
+  const blush = clamp((st.blush || 0) - 0.28, 0, 0.5) * 1.4 + (st.cold ? 0.45 : 0);
+  for (const s of [-1, 1]) {
+    const x = FX(s * 0.52), y = FY(0.0);
+    if (blush > 0.02) { const r = g.createRadialGradient(x, y, 0, x, y, 40); r.addColorStop(0, `rgba(240,110,110,${Math.min(0.75, blush)})`); r.addColorStop(1, 'rgba(240,110,110,0)'); g.fillStyle = r; g.beginPath(); g.ellipse(x, y, 42, 26, 0, 0, Math.PI * 2); g.fill(); }
+    g.save(); g.translate(x, FY(0.03)); g.rotate(s * 0.2); g.beginPath();
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 4.8 : 11; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    g.closePath(); g.fillStyle = '#ffc94a'; g.fill(); g.strokeStyle = '#c98a1a'; g.lineWidth = 2; g.stroke(); g.restore();
+  }
+  // Eyes
+  for (const s of [-1, 1]) {
+    const cx = FX(s * 0.3) + look, cy = FY(0.2) + lift, inner = -s;   // inner corner: toward the middle of the face
+    const eyes = st.wink && s < 0 ? 'happy' : st.eyes;
+    g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 11;
+    if (eyes === 'x') { g.beginPath(); g.moveTo(cx - 19, cy - 19); g.lineTo(cx + 19, cy + 19); g.moveTo(cx - 19, cy + 19); g.lineTo(cx + 19, cy - 19); g.stroke(); continue; }
+    if (eyes === 'happy') { g.beginPath(); g.moveTo(cx - 26, cy + 10); g.quadraticCurveTo(cx, cy - 30, cx + 26, cy + 10); g.stroke(); continue; }
+    if (eyes === 'closed') { g.beginPath(); g.moveTo(cx - 26, cy - 4); g.quadraticCurveTo(cx, cy + 24, cx + 26, cy - 4); g.stroke(); continue; }
+    if (eyes === 'squint') { g.beginPath(); g.moveTo(cx - inner * 17, cy - 19); g.lineTo(cx + inner * 15, cy); g.lineTo(cx - inner * 17, cy + 19); g.stroke(); continue; }
+    const sc = eyes === 'wide' ? 1.13 : 1, rx = 31 * sc, ry = 44 * sc;
+    const gr = g.createRadialGradient(cx - rx * 0.25, cy - ry * 0.3, 2, cx, cy, ry * 1.15); gr.addColorStop(0, '#3a2a25'); gr.addColorStop(0.5, '#1a100c'); gr.addColorStop(1, '#0c0706');
+    g.fillStyle = gr; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.fill();
+    const pu = st.pupil || 1;
+    g.fillStyle = shine; g.beginPath(); g.ellipse(cx - rx * 0.3 + look * 0.4, cy - ry * 0.36, rx * 0.3 * pu, ry * 0.28 * pu, -0.3, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(cx + rx * 0.3, cy + ry * 0.32, rx * 0.15, ry * 0.12, 0, 0, Math.PI * 2); g.fill();
+    // Lids: half-closed, narrowed, angry (slanting in) or worried (drooping out), cut out of the eye with a lid line
+    let yi = null, yo = null;
+    if (eyes === 'half') yi = yo = cy - ry * 0.02;
+    else if (eyes === 'narrow') { yi = cy - ry * 0.25; yo = cy - ry * 0.5; }
+    if (st.brows === 'angry') { const a = yi === null ? 0 : 0.2; yi = cy - ry * (0.32 - a); yo = cy - ry * (0.9 - a); }
+    else if (st.brows === 'worried' && yi === null) { yi = cy - ry * 0.95; yo = cy - ry * 0.42; }
+    if (yi !== null) {
+      const xi = cx + inner * (rx + 6), xo = cx - inner * (rx + 6);
+      g.save(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.moveTo(xi, yi); g.lineTo(xo, yo); g.lineTo(xo, cy - ry - 12); g.lineTo(xi, cy - ry - 12); g.closePath(); g.fill(); g.restore();
+      g.save(); g.beginPath(); g.ellipse(cx, cy, rx + 4, ry + 4, 0, 0, Math.PI * 2); g.clip();
+      g.strokeStyle = ink; g.lineWidth = 8; g.beginPath(); g.moveTo(xi, yi); g.lineTo(xo, yo); g.stroke(); g.restore();
+    }
+  }
+  // Mouth
+  const mx = FX(0) + look * 0.5, my = FY(-0.03);
+  g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 10;
+  if (st.mouth === 'grin' || st.mouth === 'shout') {
+    const w = st.mouth === 'shout' ? 20 : 27, h = st.mouth === 'shout' ? 36 : 28;
+    g.beginPath(); g.moveTo(mx - w, my - 6); g.quadraticCurveTo(mx, my - 10, mx + w, my - 6); g.quadraticCurveTo(mx + w * 0.9, my + h, mx, my + h); g.quadraticCurveTo(mx - w * 0.9, my + h, mx - w, my - 6); g.fill();
+    g.fillStyle = '#e8707a'; g.beginPath(); g.ellipse(mx, my + h - 8, w * 0.45, 6, 0, 0, Math.PI * 2); g.fill();
+  } else if (st.mouth === 'o') { g.beginPath(); g.ellipse(mx, my + 8, 15, 17, 0, 0, Math.PI * 2); g.stroke(); }
+  else if (st.mouth === 'flat') { g.beginPath(); g.moveTo(mx - 20, my + 6); g.lineTo(mx + 20, my + 4); g.stroke(); }
+  else if (st.mouth === 'smirk') { g.beginPath(); g.moveTo(mx - 22, my + 6); g.quadraticCurveTo(mx + 4, my + 14, mx + 24, my - 8); g.stroke(); }
+  else { g.beginPath(); g.moveTo(mx - 26, my - 4); g.quadraticCurveTo(mx, my + 28, mx + 26, my - 4); g.stroke(); }
+  // A bead of sweat, and a crossed plaster after a close call
+  if (st.sweat) {
+    const x = FX(0.64), y = FY(0.4), r = 11;
+    g.beginPath(); g.moveTo(x, y - r * 2); g.bezierCurveTo(x + r * 0.4, y - r, x + r, y - r * 0.4, x + r, y + r * 0.15); g.arc(x, y + r * 0.15, r, 0, Math.PI); g.bezierCurveTo(x - r, y - r * 0.4, x - r * 0.4, y - r, x, y - r * 2);
+    g.fillStyle = '#bfe6ff'; g.fill(); g.strokeStyle = '#3a7ab8'; g.lineWidth = 3; g.stroke();
+  }
+  if (st.plaster) {
+    g.save(); g.translate(FX(-0.55), FY(0.46)); g.rotate(-0.25);
+    for (const a of [0.55, -0.55]) { g.save(); g.rotate(a); g.fillStyle = '#fff4e2'; g.strokeStyle = '#8a5a44'; g.lineWidth = 3; g.beginPath(); g.moveTo(-24, -8); g.arcTo(24, -8, 24, 8, 7); g.arcTo(24, 8, -24, 8, 7); g.arcTo(-24, 8, -24, -8, 7); g.arcTo(-24, -8, 24, -8, 7); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+    g.fillStyle = '#d9a878'; g.fillRect(-7, -6, 14, 12); g.restore();
+  }
+  F.tex.needsUpdate = true;
+}
+{
+  const basePaint = paintFace;
+  paintFace = function (F, st) { return F && F.pillow ? paintPillowFace(F, st) : basePaint(F, st); };
+  const baseState = heroFaceState;
+  heroFaceState = function (rig, T) {
+    const s = baseState(rig, T);
+    if (rig.pillow && (rig.dead || (rig.squint > 0.25 && !rig.slip))) { s.eyes = 'x'; s.mouth = 'o'; }
+    return s;
+  };
+  // The cushion's fabric is its own kind: soft folds and a fine weave, no centre seam, a felt sheen
+  const baseKind = heroSurfaceKind;
+  heroSurfaceKind = function (m, o) { return m && m.userData && m.userData.plush ? 1.3 : baseKind(m, o); };
+}
+
+// ---------------------------------------------------------------- the hat
+// The reference's floppy nightcap: a soft dome that tapers into a cone bending back 150°, over a rolled cuff,
+// with a gold band, a star badge on the crown and a star charm dangling from the tip. Three bones let it whip.
+function pillowHatSpine() {
+  const s = PIL.s, n = 28, len = 0.92 * PIL.K, pts = [], p = new THREE.Vector3(0, 0, -0.3 * s);
+  for (let k = 0; k <= n; k++) { const t = k / n; pts.push({ t, p: p.clone() }); const th = (150 * Math.PI / 180) * t * t; p.add(new THREE.Vector3(0, Math.cos(th), -Math.sin(th)).multiplyScalar(len / n)); }
+  return pts;
+}
+function pillowHatRadii(t, big = 1) {
+  const s = PIL.s, dome = 1 + 0.12 * Math.sin(Math.PI * Math.min(t / 0.3, 1)), prof = Math.pow(1 - t, 1.3) * dome;
+  const rx = 0.4 * PIL.K * big * prof + 0.7 * s;
+  return [rx, lerp(0.27 * PIL.K * big * prof + 0.7 * s, rx, smooth(0, 0.45, t))];
+}
+function pillowHatRing(sp, k, grow = 0, sides = 24, big = 1) {
+  const { t, p } = sp[k], p0 = sp[Math.max(k - 1, 0)].p, p1 = sp[Math.min(k + 1, sp.length - 1)].p;
+  const tan = p1.clone().sub(p0).normalize(), xa = new THREE.Vector3(1, 0, 0), na = new THREE.Vector3().crossVectors(tan, xa).normalize(), [rx, ry] = pillowHatRadii(t, big), out = [];
+  for (let i = 0; i < sides; i++) { const a = i / sides * Math.PI * 2, w = 1 + 0.03 * Math.sin(3 * a + 5 * t); out.push(p.clone().addScaledVector(xa, Math.cos(a) * (rx + grow) * w).addScaledVector(na, Math.sin(a) * (ry + grow) * w)); }
+  return out;
+}
+function pillowSpineAt(sp, t) { const f = t * (sp.length - 1), k = Math.min(sp.length - 2, Math.floor(f)); return sp[k].p.clone().lerp(sp[k + 1].p, f - k); }
+function buildPillowHat(parent, o, K, style) {
+  const s = PIL.s, sp = pillowHatSpine(), sides = IS_TOUCH ? 16 : 24, big = style === 'wizard' ? 1.08 : 1;
+  const R = o.rarity || 0, L = o.L || {}, cloth = style === 'wizard' ? shade(o.tunic || '#5a3a8a', 0.85) : '#343f7a';
+  const hat1 = pivot(parent, 0, PIL.HAT - PIL.UP, 0), p2 = pillowSpineAt(sp, 0.3), p3 = pillowSpineAt(sp, 0.62);
+  const hat2 = pivot(hat1, p2.x, p2.y, p2.z), hat3 = pivot(hat2, p3.x - p2.x, p3.y - p2.y, p3.z - p2.z);
+  // The cone: a skirt tucked into the cushion's top, then the rings up the spine, capped at both ends
+  const rings = [pillowHatRing(sp, 0, 0, sides, big).map(v => new THREE.Vector3(v.x * 0.72, v.y - 7 * s, (v.z + 0.3 * s) * 0.45 - 0.3 * s))], ts = [0];
+  for (let k = 0; k < sp.length; k++) { rings.push(pillowHatRing(sp, k, 0, sides, big)); ts.push(sp[k].t); }
+  const P = [], T = [], idx = [];
+  rings.forEach((r, j) => r.forEach(v => { P.push(v.x, v.y, v.z); T.push(ts[j]); }));
+  for (let j = 0; j < rings.length - 1; j++) for (let i = 0; i < sides; i++) { const a = j * sides + i, b = j * sides + (i + 1) % sides; idx.push(a, b, a + sides, b, b + sides, a + sides); }
+  const cap = (ring, t, flip) => { const c = P.length / 3, m = rings[ring].reduce((acc, v) => acc.add(v), new THREE.Vector3()).multiplyScalar(1 / sides); P.push(m.x, m.y, m.z); T.push(t); for (let i = 0; i < sides; i++) { const a = ring * sides + i, b = ring * sides + (i + 1) % sides; flip ? idx.push(c, a, b) : idx.push(c, b, a); } };
+  cap(0, 0, false); cap(rings.length - 1, 1, true);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setIndex(idx); g.computeVertexNormals(); g.userData.own = true;
+  const n = P.length / 3, si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { const t = T[i], w1 = 1 - smooth(0.22, 0.38, t), w3 = smooth(0.54, 0.7, t); si.set([0, 1, 2, 0], i * 4); sw.set([w1, Math.max(0, 1 - w1 - w3), w3, 0], i * 4); }
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4)); g.addGroup(0, idx.length, 0);
+  const cone = new THREE.SkinnedMesh(g, [cmat(cloth, { roughness: 0.86 })]); cone.castShadow = true; cone.frustumCulled = false; cone.userData.solo = true; hat1.add(cone);
+  const glowStars = R >= 3 && o.armor;
+  const gold = glowStars ? glowC('#ffd166', 1.1) : metalMat('#f4c95d', 0.28);
+  // Rolled cuff, and the gold band above it
+  const [rx0, ry0] = pillowHatRadii(0, big), cuff = new THREE.CatmullRomCurve3(Array.from({ length: 40 }, (_, i) => { const a = i / 40 * Math.PI * 2; return new THREE.Vector3(Math.cos(a) * (rx0 + 0.6 * s), 0.6 * s, -0.3 * s + Math.sin(a) * (ry0 + 0.6 * s)); }), true);
+  const cm = new THREE.Mesh(new THREE.TubeGeometry(cuff, 64, 2.6 * s, IS_TOUCH ? 6 : 10, true), cmat(shade(cloth, 1.08), { roughness: 0.9 })); cm.castShadow = true; hat1.add(cm);
+  const bandRings = [2, 3, 4].map(k => pillowHatRing(sp, k, 0.5 * s, sides, big)), BP = [], BI = [];
+  bandRings.forEach(r => r.forEach(v => BP.push(v.x, v.y, v.z)));
+  for (let j = 0; j < 2; j++) for (let i = 0; i < sides; i++) { const a = j * sides + i, b = j * sides + (i + 1) % sides; BI.push(a, b, a + sides, b, b + sides, a + sides); }
+  const band = new THREE.Mesh(pillowGeo(new Float32Array(BP), BI), metalMat('#f4c95d', 0.28)); band.castShadow = true; hat1.add(band);
+  if (o.circlet || (R >= 2 && o.armor === 'robe')) { const gp = pillowHatRing(sp, 3, 1.4 * s, 4, big)[1]; const gm = cpart(hat1, OCT, glowC(o.circletGem || L.gem || '#8ff0ff', 1.8), gp.x, gp.y, gp.z, 0.018, 0.024, 0.01); gm.castShadow = false; }
+  // Star badge on the crown's front, and a star charm hanging from the tip on its own pivot, so it swings
+  const k9 = sp[9], [, ry9] = pillowHatRadii(k9.t, big), tilt = sp[10].p.clone().sub(sp[8].p).normalize();
+  const badge = new THREE.Mesh(pillowStarGeo(3.6 * s, 1.6 * s, 1.0 * s), gold); badge.castShadow = false;
+  badge.position.copy(k9.p).add(new THREE.Vector3(0, 0.6 * s, ry9 + 1.2 * s)).sub(p2); pillowFace(badge, new THREE.Vector3(0, 0.35, 1), tilt); hat2.add(badge);
+  const tip = sp[sp.length - 1].p, tipHang = pivot(hat3, tip.x - p3.x, tip.y - p3.y, tip.z - p3.z);
+  cpart(tipHang, CYL12, '#f4c95d', 0, -2 * s, 0, 0.25 * s, 4 * s, 0.25 * s).castShadow = false;
+  const charm = new THREE.Mesh(pillowStarGeo(3.4 * s, 1.5 * s, 1.2 * s), gold); charm.position.set(0, -4.5 * s, 0); charm.rotation.y = Math.PI / 2; charm.castShadow = false; tipHang.add(charm);
+  if (style === 'wizard') {   // a proper brim for the mage's hat
+    const brim = new THREE.Mesh(new THREE.LatheGeometry([[rx0 * 0.95, 0.012], [rx0 * 1.45, 0.004], [rx0 * 1.8, -0.01], [rx0 * 1.86, -0.018], [rx0 * 1.6, -0.01], [rx0 * 0.95, 0.0]].map(([r, y]) => new THREE.Vector2(r, y)), IS_TOUCH ? 18 : 30), cmat(cloth, { roughness: 0.86 }));
+    brim.scale.z = ry0 / rx0 * 1.15; brim.position.set(0, 0.8 * s, -0.3 * s); brim.castShadow = true; hat1.add(brim);
+  }
+  if (glowStars) { const gs = glowSprite('#ffd166', 0.16, 0.55); charm.add(gs); }
+  return { hat1, hat2, hat3, tipHang, charm, cone };
+}
+
+// ---------------------------------------------------------------- the pillow
+function buildPillowModel(o = {}) {
+  const V = (x, y, z) => new THREE.Vector3(x, y, z), K = PIL.K, s = PIL.s;
+  const root = new THREE.Group(), body = pivot(root, 0, 0, 0); body.scale.setScalar(o.scale || 1);
+  const R = o.rarity || 0, L = o.L || {}, armor = o.armor, trim = o.trim || '#f2c46d';
+  const glowCol = L.glow || L.gem || '#8ff0ff', glowing = !!armor && R >= 3;
+  const M0 = L.metal ? L.metal : ['#e3e8f0', '#b5bcc8', '#838b9b'];
+  const polish = [0.5, 0.36, 0.3, 0.26, 0.22][R] || 0.3, armorMetal = (c, k) => cmat(c, { metalness: 0.6, roughness: polish + k, envMapIntensity: 1.35 });
+  const metalA = armorMetal(M0[0], 0), metalB = armorMetal(M0[1], 0.07), gold = metalMat('#e6c35c', 0.3), darkLeather = cmat('#3a2616', { roughness: 0.8 });
+  const leatherC = mixHex('#7a4e2c', L.cloth || '#7a4e2c', 0.22);
+  // Invisible legs (the gait code still turns them) and the torso, where the cushion hangs
+  const legL = pivot(body, -0.09, PIL.HOVER + 0.05, 0), legR = pivot(body, 0.09, PIL.HOVER + 0.05, 0);
+  const knees = [pivot(legL, 0, -0.1, 0), pivot(legR, 0, -0.1, 0)];
+  const torso = pivot(body, 0, PIL.TORSO_Y, 0), cushion = pivot(torso, 0, PIL.CY, 0);
+  // Bones: the base, the soft upper half (the "head"), and the two ear corners
+  const lower = pivot(cushion, 0, PIL.ZB, 0), upper = pivot(lower, 0, PIL.UP - PIL.ZB, 0);
+  const tuftA = pivot(upper, 0.28 * K, 0.42 * K - PIL.UP, 0), tuftB = pivot(upper, -0.28 * K, 0.42 * K - PIL.UP, 0);
+  const bones = [lower, upper, tuftA, tuftB], skinned = [];
+  // Ghost arms: the weapon and anything held float where hands would be
+  const armL = pivot(torso, -0.36, 0.2, 0.03), armR = pivot(torso, 0.36, 0.2, 0.03);
+  const elbows = [pivot(armL, 0, -0.165, 0), pivot(armR, 0, -0.165, 0)]; elbows.forEach(e => { e.rotation.x = -0.25; });
+  const hand = pivot(elbows[1], 0, -0.185, 0.012), handL = pivot(elbows[0], 0, -0.185, 0.012);
+
+  // ---------------------------------------------------------------- the cushion
+  const S = pillowSurface(), n = S.L.length;
+  const bodyCol = armor === 'tunic' ? mixHex(PIL_CREAM, L.cloth || '#3f74b8', 0.7) : armor === 'robe' ? mixHex(PIL_CREAM, L.cloth || '#6a55a8', 0.55) : PIL_CREAM;
+  const base = col(bodyCol), cols = new Float32Array(n * 3), cc = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const l = S.L[i], u = S.U[i], d = S.D[i], x = S.pos[i * 3], y = S.pos[i * 3 + 1];
+    const e = pillowWeights(x, y)[2] + pillowWeights(x, y)[3], rim = 1 - smooth(0.0, 0.3, Math.abs(d));
+    const mottle = (hashInts(Math.round(l * 40), Math.round(u * 40), Math.round(d * 40)) % 1000) / 1000;
+    const k = (1 + pillowPleat(l, u, d) * 0.07) * (1 - 0.06 * rim) * (1 - 0.05 * e) * (1 - 0.08 * smooth(-0.55, -1, u)) * (0.985 + mottle * 0.03);
+    cc.copy(base).multiplyScalar(k); cols.set([cc.r, cc.g, cc.b], i * 3);
+  }
+  const bodyMat = patchMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, skinning: true }), { cutY: 9 }); bodyMat.userData.plush = true;
+  const bodyMesh = pillowSkin(pillowGeo(S.pos.slice(), S.idx, { color: new THREE.BufferAttribute(cols, 3) }), bodyMat, cushion); skinned.push(bodyMesh);
+  // Stitched piping round the rim: trimmed on uncommon gear and up, glowing on epic and legendary
+  {
+    const pts = [], C = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+    for (let i = 0; i < 4; i++) { const [l0, u0] = C[i], [l1, u1] = C[(i + 1) % 4]; for (let k = 0; k < 40; k++) pts.push(pillowPoint(lerp(l0, l1, k / 40), lerp(u0, u1, k / 40), 0)); }
+    const segs = IS_TOUCH ? 200 : 320, g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), segs, 0.95 * s, 6, true), P = g.attributes.position;
+    const pipe = col(armor && R >= 1 ? mixHex(bodyCol, trim, 0.75) : shade(bodyCol, 0.72)), thread = col(armor && R >= 1 ? shade(trim, 0.7) : shade(bodyCol, 0.5)), sc = new Float32Array(P.count * 3);
+    for (let i = 0; i <= segs; i++) for (let j = 0; j <= 6; j++) { const c = Math.floor(i / 2) % 2 ? thread : pipe; sc.set([c.r, c.g, c.b], (i * 7 + j) * 3); }
+    g.setAttribute('color', new THREE.BufferAttribute(sc, 3)); g.userData.own = true;
+    const pm = patchMaterial(new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, roughness: 0.85, skinning: true }, glowing ? { emissive: glowCol, emissiveIntensity: 0.9 } : {})), { cutY: 9 }); pm.userData.plush = true;
+    const pipeMesh = pillowSkin(g, pm, cushion); pipeMesh.userData.noInk = true; skinned.push(pipeMesh);
+  }
+  // The face
+  const F = makePillowFace(o), faceMesh = pillowSkin(pillowFaceGeo(), F.mat, cushion); faceMesh.castShadow = false; faceMesh.renderOrder = 2; faceMesh.userData.noInk = true; skinned.push(faceMesh);
+  body.userData.face = F;
+  // Rigid little parts ride on the upper half (or the base, low down), at the right spot on the surface
+  const onCushion = (l, u, d, lift = 0) => { const { p, n: nn } = pillowAt(l, u, d); p.addScaledVector(nn, lift); const w = pillowWeights(p.x, p.y), par = w[0] > w[1] ? lower : upper; return { par, p: p.sub(par === lower ? V(0, PIL.ZB, 0) : V(0, PIL.UP, 0)), n: nn }; };
+  // The care tag caught in the right side seam, hanging a little under its own weight
+  { const t = onCushion(1, -0.55, 0, 0.004), tg = pivot(t.par, t.p.x, t.p.y, t.p.z); tg.rotation.z = -0.3;
+    cpart(tg, roundBox(0.055, 0.03, 0.004, 0.0015), '#f4f0e6', 0.026, 0, 0, 1, 1, 1, { roughness: 0.9 }).castShadow = false;
+    cpart(tg, BOXC, '#c0392b', 0.036, 0.004, 0, 0.012, 0.004, 0.0046).castShadow = false; cpart(tg, BOXC, '#8a8070', 0.036, -0.005, 0, 0.016, 0.002, 0.0046).castShadow = false; }
+
+  // ---------------------------------------------------------------- what the pillow wears
+  const shellMat = (c, o2 = {}) => { const m = patchMaterial(new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8, skinning: true }, o2)), { cutY: 9 }); if (o2.metalness > 0.2) { m.envMap = ENV.tex; m.envMapIntensity = 1.35; } return m; };
+  const shell = (mask, off, mat, opts) => { const m = pillowSkin(pillowShell(mask, off, opts), mat, cushion); skinned.push(m); return m; };
+  const face = (l, u, d) => d > 0.4 && Math.abs(l) < 0.7 && u > -0.22 && u < 0.5;   // keep the face clear
+  if (armor === 'tunic') {
+    // A pillowcase: tinted cloth (above), a hem band at the base and two wooden buttons
+    shell((l, u) => u < -0.72 && u > -0.9, 0.009, shellMat(shade(L.cloth || '#3f74b8', 0.8)));
+    for (const x of [-0.17, 0.17]) { const b = onCushion(x, -0.52, 1, 0.006), bt = pivot(b.par, b.p.x, b.p.y, b.p.z); pillowFace(bt, b.n); cpart(bt, CYL12, '#8a5a30', 0, 0, 0, 0.018, 0.008, 0.018).rotation.x = Math.PI / 2; for (const a of [0.8, -0.8]) cpart(bt, BOXC, '#f0e2c0', 0, 0, 0.005, 0.02, 0.003, 0.002).rotation.z = a; }
+  } else if (armor === 'leather') {
+    // Leather patches sewn over the corners and a strap round the middle with a brass buckle
+    const lm = shellMat(leatherC, { roughness: 0.62 });
+    shell((l, u) => Math.abs(l) > 0.62 && Math.abs(u) > 0.62, 0.008, lm);
+    shell((l, u) => u < -0.46 && u > -0.64, 0.012, shellMat('#3e2818', { roughness: 0.7 }));
+    const b = onCushion(0.35, -0.55, 1, 0.016), bk = pivot(b.par, b.p.x, b.p.y, b.p.z); pillowFace(bk, b.n);
+    cpart(bk, roundBox(0.05, 0.044, 0.01, 0.006), gold, 0, 0, 0, 1, 1, 1); cpart(bk, roundBox(0.03, 0.024, 0.012, 0.004), '#3e2818', 0, 0, 0.002, 1, 1, 1);
+  } else if (armor === 'chain') {
+    // A mail skirt round the lower half, and a tabard with its emblem hanging down the front
+    shell((l, u, d) => u < -0.3, 0.01, shellMat(M0[1], { map: mailTex(), metalness: 0.55, roughness: polish + 0.12 }), { uv: 9 });
+    shell((l, u, d) => d > 0.55 && Math.abs(l) < 0.34 && u < -0.24, 0.022, shellMat(L.cloth || '#2f5fa8', { roughness: 0.8 }));
+    shell((l, u, d) => d > 0.55 && Math.abs(l) < 0.34 && u < -0.24 && (Math.abs(l) > 0.26 || u > -0.32), 0.026, shellMat(trim, { roughness: 0.5, metalness: 0.15 }));
+  } else if (armor === 'plate') {
+    // A toy knight: a breastplate, capped bottom corners and metal ear caps (spiked when epic)
+    shell((l, u, d) => d > 0.35 && Math.abs(l) < 0.92 && u < -0.26 && !face(l, u, d), 0.016, shellMat(M0[0], { metalness: 0.6, roughness: polish }));
+    shell((l, u) => Math.abs(l) > 0.7 && u < -0.7, 0.024, shellMat(M0[1], { metalness: 0.6, roughness: polish + 0.07 }));
+    shell((l, u) => Math.abs(l) > 0.6 && u > 0.6, 0.014, shellMat(M0[0], { metalness: 0.6, roughness: polish }));
+    for (const x of [-0.7, -0.35, 0.35, 0.7]) { const r = onCushion(x, -0.3, 0.85, 0.02), rv = pivot(r.par, r.p.x, r.p.y, r.p.z); cpart(rv, SPHL, gold, 0, 0, 0, 0.009, 0.009, 0.009).castShadow = false; }
+    if (L.spikes) for (const [bn, sx] of [[tuftA, 1], [tuftB, -1]]) { const sp = cpart(bn, CONE12, metalA, sx * 0.03, 0.03, 0, 0.018, 0.06, 0.018); sp.rotation.z = -sx * 0.6; }
+  } else if (armor === 'robe') {
+    // A wizard's mantle round the shoulders of the cushion, trimmed
+    shell((l, u) => u > 0.42 && u < 0.66, 0.014, shellMat(shade(o.tunic || L.cloth || '#6a55a8', 0.72), { roughness: 0.82 }));
+    shell((l, u) => u > 0.42 && u < 0.48, 0.018, shellMat(trim, { roughness: 0.5, metalness: 0.2 }));
+  }
+  if (L.emblem && (armor === 'chain' || armor === 'plate')) {
+    const e = onCushion(0, -0.55, 1, armor === 'chain' ? 0.03 : 0.024), eg = pivot(e.par, e.p.x, e.p.y, e.p.z); pillowFace(eg, e.n);
+    const em = glowing ? glowC(L.trim || trim, 1.0) : metalMat(L.trim === '#e8d9b0' ? '#e6c35c' : (L.trim || '#e6c35c'), 0.3);
+    if (L.emblem === 1) cpart(eg, OCT, em, 0, 0, 0, 0.03, 0.04, 0.01);
+    else if (L.emblem === 2) { cpart(eg, CYL12, em, 0, 0, 0, 0.022, 0.008, 0.022).rotation.x = Math.PI / 2; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; cpart(eg, BOXC, em, Math.cos(a) * 0.034, Math.sin(a) * 0.034, 0, 0.01, 0.01, 0.006).rotation.z = a; } }
+    else { cpart(eg, roundBox(0.055, 0.05, 0.01, 0.007), em, 0, 0.006, 0, 1, 1, 1); cpart(eg, CONE4, em, 0, -0.028, 0, 0.04, 0.03, 0.007).rotation.x = Math.PI; }
+  }
+
+  // ---------------------------------------------------------------- hat, helm, coif or hood
+  const hg = o.headgear;
+  let hair = null, hat = null;
+  if (!hg || hg === 'hat') { hat = buildPillowHat(upper, o, null, hg === 'hat' ? 'wizard' : 'nightcap'); hair = hat.hat1; }
+  else if (hg === 'helm') {
+    // A little kettle helm between the ears: dome, brim, crest and rivets; wings when epic, a plume when legendary
+    hair = pivot(upper, 0, PIL.ZT - PIL.UP - 0.012, -0.005);
+    const shellM = R >= 4 ? metalMat('#ffe08a', 0.2) : metalA;
+    cpart(hair, DOME, shellM, 0, 0, 0, 0.17, 0.13, 0.15);
+    cpart(hair, TORUS2, cmat(trim, { roughness: 0.45, metalness: 0.3 }), 0, 0.004, 0, 0.18, 0.16, 0.05).rotation.x = Math.PI / 2;
+    const crest = cpart(hair, new THREE.TorusGeometry(0.13, 0.012, 6, 20, Math.PI), metalB, 0, 0, 0, 1.12, 1, 1); crest.rotation.y = Math.PI / 2;
+    for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; cpart(hair, SPHL, gold, Math.sin(a) * 0.168, 0.012, Math.cos(a) * 0.148, 0.007, 0.007, 0.007).castShadow = false; }
+    if (R === 3) for (const sx of [-1, 1]) { const w = cpart(hair, CONE12, cmat('#f4f0e6', { roughness: 0.6 }), sx * 0.16, 0.06, -0.02, 0.03, 0.12, 0.012); w.rotation.set(0, 0, -sx * 1.0); }
+    if (R >= 4) { const pl = pivot(hair, 0, 0.12, -0.02); pl.rotation.x = -1.0; const pc = L.cape || '#b8403a'; for (let i = 0; i < 4; i++) cpart(pl, CONE12, i % 2 ? pc : shade(pc, 1.2), 0, 0.08 + i * 0.025, -i * 0.015, 0.035 - i * 0.005, 0.18, 0.024).rotation.x = -0.2 * i; }
+  } else if (hg === 'coif' || hg === 'hood') {
+    // Mail or cloth drawn over the top of the cushion: the ears stay in it, so a hood becomes a cat-eared hood
+    const coif = hg === 'coif', front = (l, u, d) => (d > 0.45 ? u > 0.44 : u > (coif ? 0.3 : 0.24));
+    const cloth = coif ? null : (armor === 'robe' ? shade(o.tunic || '#6a55a8', 0.85) : L.cape && R >= 2 ? shade(L.cape, 0.8) : shade(o.tunic || leatherC, 0.85));
+    shell(front, coif ? 0.012 : 0.02, coif ? shellMat(M0[1], { map: mailTex(), metalness: 0.55, roughness: polish + 0.12 }) : shellMat(cloth, { roughness: 0.86 }), { uv: 9 });
+    shell((l, u, d) => front(l, u, d) && !front(l, u + 0.08, d), coif ? 0.017 : 0.026, coif ? shellMat('#3a2616', { roughness: 0.8 }) : shellMat(R >= 2 ? trim : shade(cloth, 0.8), { roughness: 0.7 }));
+    hair = pivot(upper, 0, PIL.ZT - PIL.UP, 0);
+    if (!coif) { const pk = cpart(hair, CONE12, cmat(cloth, { roughness: 0.86 }), 0, -0.01, -0.14, 0.04, 0.16, 0.026); pk.rotation.x = -2.2; }
+  }
+
+  // ---------------------------------------------------------------- the cape
+  // A cloth panel on the back, animated each frame: it flies out when gliding, swings on turns and flutters.
+  // Red by default, the armour's cape colour when it has one, a long starry drape on robes; a gold hem on rare gear.
+  let cape = null;
+  {
+    const long = armor === 'robe', rows = long ? 14 : 11, colsN = 14, top = 0.7, bot = long ? -1.0 : -0.58;
+    const cCol = long ? shade(o.tunic || L.cloth || '#6a55a8', 0.8) : (o.cape || '#b8433f'), hem = armor && R >= 2 ? trim : shade(cCol, 0.72);
+    const P = [], cl = [], F2 = [], SX = [], idx = [], cA = col(cCol), cH = col(hem), cI = col(shade(cCol, 0.86));
+    for (let r = 0; r <= rows; r++) for (let c = 0; c <= colsN; c++) {
+      const f = r / rows, sx = -1 + 2 * c / colsN, l = sx * (long ? lerp(0.6, 0.86, f) : lerp(0.5, 0.72, f)), u = lerp(top, Math.max(bot, -0.98), f), { p, n: nn } = pillowAt(l, u, -1);
+      p.addScaledVector(nn, 1.3 * s).add(V(0, 0, -7 * s * Math.pow(f, 1.6))); if (u <= -0.98) p.y += (bot + 0.98) * 0.3 * K;
+      p.y += 1.2 * s * Math.cos(sx * Math.PI * 2.5) * f * f - PIL.UP;
+      P.push(p.x, p.y, p.z); F2.push(f); SX.push(sx);
+      const k = r >= rows - (armor && R >= 2 ? 1 : 0) && armor && R >= 2 ? cH : r === 0 ? cI : cA; cl.push(k.r, k.g, k.b);
+      if (r < rows && c < colsN) { const i = r * (colsN + 1) + c; idx.push(i, i + colsN + 1, i + 1, i + 1, i + colsN + 1, i + colsN + 2); }
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3)); g.setIndex(idx); g.computeVertexNormals(); g.userData.own = true;
+    cape = new THREE.Mesh(g, cmat('#ffffff', { vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 })); cape.castShadow = true; cape.frustumCulled = false; cape.userData.solo = true; upper.add(cape);
+    cape.userData.pcape = { rest: Float32Array.from(P), f: F2, sx: SX, len: (top - bot) * 0.6 * K, long };
+    for (const sx of [-1, 1]) { const q = onCushion(sx * (long ? 0.6 : 0.5), top - 0.03, -1, 1.6 * s), cp = cpart(q.par, SPH3, R >= 2 && armor ? gold : metalMat('#f4c95d', 0.3), q.p.x, q.p.y, q.p.z, 0.018, 0.018, 0.018); if (R >= 2 && armor) cpart(q.par, OCT, glowC(L.gem || '#ff5a4a', 1.2), q.p.x, q.p.y, q.p.z - 0.014, 0.008, 0.01, 0.006).castShadow = false; }
+    if (long && L.runes) for (let i = 0; i < 7; i++) { const f = 0.35 + (i % 3) * 0.2, sx = -0.7 + i * 0.23, st = new THREE.Mesh(pillowStarGeo(0.012, 0.005, 0.003), glowC(glowCol, 1.4)); st.userData.cf = [f, sx]; st.castShadow = false; cape.add(st); }
+  }
+
+  // ---------------------------------------------------------------- trinkets, orbiters, motes
+  const tr = o.trinket;
+  if (tr) {
+    const TL = tr.look || ItemLook.make(tr), gd = tr.rarity >= 2 || TL.variant % 2 === 0, mt = metalMat(gd ? '#f2c14e' : '#d5dae4', 0.25), gm = glowC(TL.gem, tr.rarity >= 2 ? 1.6 : 0.8);
+    if (tr.icon === 'ring') {   // a ring floats beside the left side, turning slowly
+      const rp = pivot(handL, 0, 0.02, 0.03); rp.userData.ring = true;
+      const r = cpart(rp, TORUS2, mt, 0, 0, 0, 0.028, 0.028, 0.03); r.rotation.y = Math.PI / 2; cpart(rp, OCT, gm, 0, 0.03, 0, 0.012, 0.016, 0.012);
+      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.16, 0.55); gs.position.y = 0.03; rp.add(gs); }
+    } else if (tr.icon === 'amulet') {   // a pendant pinned below the smile on a short ribbon
+      const a = onCushion(0, -0.32, 1, armor === 'chain' ? 0.03 : 0.012), pd = pivot(a.par, a.p.x, a.p.y, a.p.z); pillowFace(pd, a.n);
+      cpart(pd, BOXC, '#8a2a3a', 0, 0.02, 0, 0.012, 0.04, 0.004).castShadow = false;
+      if (TL.variant === 1) cpart(pd, SPH3, mt, 0, 0, 0.004, 0.026, 0.034, 0.01); else if (TL.variant === 2) cpart(pd, OCT, mt, 0, 0, 0.004, 0.034, 0.034, 0.01); else cpart(pd, CYL12, mt, 0, 0, 0.004, 0.028, 0.01, 0.028).rotation.x = Math.PI / 2;
+      cpart(pd, OCT, gm, 0, 0, 0.012, 0.015, 0.02, 0.008);
+      if (tr.rarity >= 2) { const gs = glowSprite(TL.gem, 0.2, 0.55); gs.position.z = 0.02; pd.add(gs); }
+    } else {   // a charm dangling from the left side seam
+      const c = onCushion(-1, -0.45, 0.25, 0.004), ch = pivot(c.par, c.p.x, c.p.y, c.p.z);
+      cpart(ch, CYL12, '#6b4226', 0, -0.025, 0, 0.003, 0.05, 0.003);
+      if (TL.variant === 0) { for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; cpart(ch, CONE4, mt, Math.sin(a) * 0.02, -0.07 + Math.cos(a) * 0.02, 0, 0.014, 0.024, 0.006).rotation.z = -a; } }
+      else if (TL.variant === 1) { const m = cpart(ch, new THREE.TorusGeometry(1, 0.35, 6, 12, Math.PI * 1.3), mt, 0, -0.07, 0, 0.028, 0.028, 0.028); m.rotation.z = 0.8; }
+      else cpart(ch, SPH3, gm, 0, -0.075, 0, 0.018, 0.032, 0.008);
+      cpart(ch, OCT, gm, 0, -0.07, 0.01, 0.011, 0.014, 0.008);
+    }
+  }
+  let orbit = null;
+  if (armor === 'robe' && R >= 3) {
+    orbit = pivot(body, 0, 0.62, 0);
+    for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2, p = pivot(orbit, Math.cos(a) * 0.42, Math.sin(i * 2.1) * 0.08, Math.sin(a) * 0.42); const gm = cpart(p, OCT, glowC(glowCol, 2), 0, 0, 0, 0.025, 0.05, 0.025); gm.userData.solo = true; p.add(glowSprite(glowCol, 0.22, 0.7)); }
+  }
+  let motes = null;
+  if (armor && R >= 4) {
+    motes = pivot(body, 0, 0, 0); motes.userData.col = L.glow || L.gem || '#ffd166';
+    for (let i = 0; i < 5; i++) { const m = glowSprite(motes.userData.col, 0.07, 0.8); m.userData.ph = i / 5; m.userData.a = i * 2.4; motes.add(m); }
+  }
+
+  // ---------------------------------------------------------------- the cushion of wind
+  // Faint wisps swirling under the pillow, a few specks riding them, and a soft glow where the ghost hands hold things
+  const wind = { wisps: [], specks: [] };
+  for (let i = 0; i < 3; i++) {
+    const tilt = pivot(body, 0, 0.03 + i * 0.03, 0), spin = pivot(tilt, 0, 0, 0), r = 0.2 + i * 0.05;
+    const m = new THREE.Mesh(new THREE.TorusGeometry(1, 0.018, 4, 28, 2.1 + i * 0.4), glowMat('#e8f6ff', 0.22, true).clone()); m.scale.setScalar(r); m.castShadow = false; m.userData.solo = true; m.userData.noFlash = true; spin.add(m);
+    tilt.rotation.x = Math.PI / 2; wind.wisps.push({ tilt, spin, m, r, y: 0.03 + i * 0.03, sp: [1.9, -1.3, 2.6][i], op: 0.22 - i * 0.04 });
+  }
+  for (let i = 0; i < 4; i++) { const sp = glowSprite('#f4fbff', 0.035, 0.5); sp.userData.ph = i / 4; body.add(sp); wind.specks.push(sp); }
+  const wispR = glowSprite('#e6f4ff', 0.2, 0.3), wispL = glowSprite('#e6f4ff', 0.16, 0.3); hand.add(wispR); handL.add(wispL); wispL.visible = false;
+
+  const rig = { root, body, torso, head: upper, legL, legR, armL, armR, hand, handL, chest: bodyMesh, cape, face: { eyes: new THREE.Object3D(), brows: new THREE.Object3D(), mouth: new THREE.Object3D() },
+    walk: 0, weapon: null, t: Math.random() * 10, blink: rand(1, 4), squint: 0, idle: null, look: o,
+    hero: { knees, elbows, hair: hair || pivot(upper, 0, PIL.ZT - PIL.UP, 0), tails: [], scarf: [], orbit, fin: null, fingers: null, motes },
+    pillow: { cushion, lower, upper, tufts: [tuftA, tuftB], hat, cape, wind, wispR, wispL, faceMesh, bodyMesh } };
+  // Bind every skinned part to one skeleton in the rest pose
+  root.updateMatrixWorld(true);
+  const skel = new THREE.Skeleton(bones);
+  for (const m of skinned) m.bind(skel);
+  if (hat) hat.cone.bind(new THREE.Skeleton([hat.hat1, hat.hat2, hat.hat3]));
+  heroHiRes(root, o, R);
+  bakePivots(root);
+  mergeRig(root);
+  return rig;
+}
+buildHeroModel = function (o) { return buildPillowModel(o); };
+
+// ---------------------------------------------------------------- equipment on a pillow
+{
+  // The face decal and the thin piping take no ink outline (it would ring the face and double the seam)
+  const baseEquipPw = equipHero;
+  equipHero = function (rig, player) {
+    baseEquipPw(rig, player);
+    const P = rig.pillow; if (!P) return;
+    const drop = [];
+    P.cushion.traverse(m => { if (!m.userData.noInk) return; m.parent.children.forEach(c => { if (c !== m && c.userData.outline && c.geometry === m.geometry) drop.push(c); }); m.children.forEach(c => { if (c.userData.outline) drop.push(c); }); });
+    drop.forEach(c => c.parent && c.parent.remove(c));
+    P.wFly = null; P.wPar = null;
+  };
+  // Put away, the weapon floats upright beside the pillow like the reference's moon staff, bobbing a beat behind
+  const baseSheath = heroSheathMount;
+  heroSheathMount = function (rig, item) {
+    if (!rig.pillow) return baseSheath(rig, item);
+    if (rig.sheathMount) { rig.sheathMount.parent && rig.sheathMount.parent.remove(rig.sheathMount); rig.sheathMount = null; }
+    if (!item || !rig.torso || !SHEATH[item.icon]) return;
+    let y = 0.02;
+    if (rig.weapon) {
+      const b = new THREE.Box3(), m4 = new THREE.Matrix4(), inv = new THREE.Matrix4(); rig.weapon.updateMatrixWorld(true); inv.copy(rig.weapon.matrixWorld).invert();
+      rig.weapon.traverse(x => { if (x.isMesh && x.geometry) { x.geometry.computeBoundingBox(); b.union(x.geometry.boundingBox.clone().applyMatrix4(m4.multiplyMatrices(inv, x.matrixWorld))); } });
+      if (!b.isEmpty()) y = 0.13 - (b.min.y + b.max.y) / 2;
+    }
+    const align = pivot(rig.torso, 0.43, y, -0.05), comp = pivot(align, 0, 0, 0);
+    if (rig.weaponRest) comp.quaternion.setFromEuler(rig.weaponRest).invert();
+    align.userData.pillowFloat = true; align.userData.base = align.position.clone(); align.visible = false;
+    rig.sheathMount = align; rig.sheathComp = comp;
+  };
+  // The night lantern hangs from the nightcap's tip in place of its star (or from an ear under a helm or hood)
+  const baseLantern = heroLantern;
+  heroLantern = function (rig) {
+    baseLantern(rig);
+    const P = rig.pillow, Ln = rig.lantern; if (!P || !Ln) return;
+    const at = P.hat ? P.hat.tipHang : P.tufts[1];
+    at.add(Ln.hinge); Ln.hinge.position.set(0, P.hat ? -0.01 : 0.02, 0); Ln.body.scale.setScalar(P.hat ? 1.05 : 1.2);
+  };
+  // Potions hang in loops along the right side seam, the coin purse from the left one
+  const baseKit = heroKit;
+  heroKit = function (rig, player) {
+    baseKit(rig, player);
+    const P = rig.pillow, Kt = rig.kit; if (!P || !Kt) return;
+    const toTorso = (l, u, d) => { const { p } = pillowAt(l, u, d); return p.add(new THREE.Vector3(0, PIL.CY, 0)); };
+    Kt.vials.forEach((v, i) => { const p = toTorso(1, -0.42, -0.6 + i * 0.4); v.hang.position.set(p.x + 0.012, p.y, p.z); v.hang.rotation.set(0, Math.PI / 2, 0); });
+    const pp = toTorso(-1, -0.5, 0.15); Kt.purse.ph.position.set(pp.x - 0.012, pp.y, pp.z); Kt.purse.ph.rotation.set(0, -Math.PI / 2, 0);
+  };
+  // No feet: the cushion of wind stirs whatever it glides over, and leaves no prints
+  const baseStep = Game.prototype.footstep;
+  const DUSTY = { [T.PATH]: 0xc9b089, [T.SAND]: 0xeadcaa, [T.ASH]: 0x8a7f78, [T.MUD]: 0x7a6040, [T.COBBLE]: 0xb8ad98, [T.STONE]: 0xb0acbb, [T.BASALT]: 0x6a5f5a, [T.FARM]: 0x8a6a40, [T.BRIDGE]: 0x9a8a70, [T.CAVE]: 0x6a6280 };
+  Game.prototype.footstep = function (leg) {
+    const r = this.heroRig; if (!r || !r.pillow) return baseStep.call(this, leg);
+    r.pillowStep = (r.pillowStep || 0) + 1; if (r.pillowStep % 2) return;
+    const p = this.player, t = this.map.type(Math.floor(p.x / TILE), Math.floor(p.y / TILE)), x = px2w(p.x), z = px2w(p.y), y = p.h + 0.04, f = p.facing;
+    const bx = x - Math.cos(f) * 0.12, bz = z - Math.sin(f) * 0.12;
+    if (t === T.SHALLOW || t === T.BOG) { this.fx.emit(bx, y, bz, { count: 4, colors: t === T.BOG ? [0x8a9a5a, 0xc6d49a] : [0xd8f4ff, 0xffffff], speed: 0.7, vy: 0.9, gravity: 6, life: 0.4, size: 0.05 }); return; }
+    const dusty = DUSTY[t];
+    if (dusty) this.fx.emit(bx, y, bz, { count: 2, colors: [dusty], speed: 0.55, vy: 0.2, life: 0.8, size: 0.2, blend: 'normal', alpha: 0.28, grow: 2.2, jitter: 0.14 });
+    else if (Math.random() < 0.4) this.fx.emit(bx, y, bz, { count: 2, colors: [0x6aaa4a, 0x9ad66a], speed: 0.8, vy: 0.9, gravity: 4, life: 0.45, size: 0.045, blend: 'normal' });
+  };
+}
+
+// ---------------------------------------------------------------- the pillow's own motion
+// Runs after every other layer: the hover (via the gait), hat and ear springs, the cape, the wind cushion, the
+// glow of the ghost hands, the put-away weapon's float, and the wind giving out (deflating, ears drooping,
+// the hat sliding off) when the hero falls.
+function pillowGait(rig, dt, moving, T, speed, G) {
+  const k = 1 - Math.exp(-dt * 4);
+  G.mv = lerp(G.mv || 0, moving ? 1 : 0, k); G.run = lerp(G.run || 0, moving ? clamp((speed - 0.55) / 0.65, 0, 1) : 0, k);
+  G.moving = false;
+  const mv = G.mv, run = G.run, ph = T * Math.PI, gp = rig.walk * 0.5, push = 1 - _eo(G.go);
+  // A slow bob when still (stretched at the top, squashed at the bottom), a quicker, shallower one when gliding
+  rig.body.position.y = lerp(Math.sin(ph) * 0.022, Math.sin(gp * 2) * 0.012, mv);
+  const st = lerp(Math.sin(ph) * 0.03, Math.sin(gp * 2) * 0.015 + run * 0.035, mv), sxz = 1 / Math.sqrt(1 + st);
+  rig.torso.scale.set(sxz, 1 + st, sxz);
+  rig.torso.rotation.x = lerp(Math.sin(ph * 2) * 0.012, lerp(0.14, 0.22, run), mv) + push * 0.2;
+  rig.torso.rotation.z = lerp(Math.sin(ph + 0.7) * 0.035, Math.sin(gp) * 0.05, mv);
+  if (!rig.attacking) {   // what the ghost hands hold trails behind the glide and bobs a beat after the cushion
+    const trail = lerp(Math.sin(ph - 1.2) * 0.05, 0.38 + run * 0.12 + Math.sin(gp * 2 - 1.2) * 0.05, mv);
+    rig.armR.rotation.x = trail; rig.armL.rotation.x = trail * 0.8;
+    rig.armR.rotation.z = lerp(0.06, 0.12, mv); rig.armL.rotation.z = -lerp(0.06, 0.12, mv);
+  }
+  rig.legL.rotation.x = rig.legR.rotation.x = 0;
+}
+function pillowAnimate(rig, dt, moving, T, speed) {
+  const P = rig.pillow, G = rig.gait || {}, A = rig.anim || { yawV: 0 }, d = Math.min(Math.max(dt, 0), 0.05);
+  const mv = G.mv || 0, run = G.run || 0, ph = T * Math.PI;
+  if (moving && !rig.attacking) { rig.body.rotation.y *= 0.3; rig.torso.rotation.y *= 0.3; }   // no hip wiggle on a glide
+  // The wind gives out: the cushion flattens, the ears droop and the hat slides off; rising, it all puffs back
+  P.deadK = lerp(P.deadK || 0, rig.dead ? 1 : 0, 1 - Math.exp(-dt * (rig.dead ? 2 : 6)));
+  const dk = P.deadK;
+  P.cushion.scale.set(1 + 0.1 * dk, 1 - 0.05 * dk, 1 - 0.45 * dk);
+  // Hat: two springs whip the crown and tip, swept back by the glide, swinging out on turns
+  if (P.hat) {
+    const Hs = P.hatS || (P.hatS = [{ a: 0, v: 0, b: 0, w: 0 }, { a: 0, v: 0, b: 0, w: 0 }, { a: 0, v: 0, b: 0, w: 0 }]);
+    const drag = -(0.12 + 0.3 * run) * mv - (rig.attacking ? 0.12 : 0) + (rig.cast ? -0.1 : 0), turn = clamp((A.yawV || 0) * 0.05, -0.45, 0.45);
+    for (let i = 0; i < 2; i++) {
+      const S = Hs[i], m = i + 1, tx = drag * m * 0.6 + Math.sin(T * (5 + 4 * mv) - m * 0.9) * (0.025 + 0.05 * mv) * m, tz = turn * m + Math.sin(T * 1.3 - m) * 0.035 * m;
+      S.v += ((tx - S.a) * 55 - S.v * 6) * d; S.a += S.v * d; S.w += ((tz - S.b) * 45 - S.w * 5) * d; S.b += S.w * d;
+    }
+    P.hat.hat2.rotation.set(Hs[0].a, 0, Hs[0].b); P.hat.hat3.rotation.set(Hs[1].a, 0, Hs[1].b);
+    const C = Hs[2], tt = -Hs[1].a * 0.8 + Math.sin(T * 3.1) * 0.08; C.v += ((tt - C.a) * 30 - C.v * 3) * d; C.a += C.v * d;
+    P.hat.tipHang.rotation.set(C.a, 0, -Hs[1].b * 0.6);
+    P.hat.charm.visible = !(rig.lantern && rig.lantern.hinge.visible);
+    const h = rig.hero.hair, hb = P.hairBase || (P.hairBase = h.position.clone());
+    if (dk > 0.002 || P.hairOff) { h.position.set(hb.x + 0.05 * dk, hb.y + 0.03 * dk, hb.z - 0.2 * dk); h.rotation.x -= 0.9 * dk; P.hairOff = dk > 0.002; }
+  }
+  // Ears: a flick with the flutter, swept back by speed and blows, perked up in surprise, drooping when down
+  const perk = rig.startle || rig.itemGet || rig.gulp || rig.skyward ? 0.28 : 0, flick = Math.sin(T * 9.4) * (0.03 + 0.05 * mv);
+  const back = -(0.1 + 0.25 * run) * mv - (rig.attacking ? 0.18 : 0) - (rig.squint > 0.2 ? 0.3 : 0);
+  P.earK = lerp(P.earK || 0, perk, 1 - Math.exp(-dt * 10));
+  P.tufts[0].rotation.set(back, 0, flick + P.earK - 0.45 * dk); P.tufts[1].rotation.set(back, 0, -Math.sin(T * 9.4 + 1.1) * (0.03 + 0.05 * mv) - P.earK + 0.45 * dk);
+  // Cape
+  const Cm = P.cape, CD = Cm && Cm.userData.pcape;
+  if (CD) {
+    const flare = 0.15 + 0.5 * mv + 0.45 * run * mv + (rig.attacking ? 0.3 : 0) + Math.abs(rig.capeSway || 0) * 0.5;
+    CD.flare = lerp(CD.flare === undefined ? flare : CD.flare, flare, 1 - Math.exp(-dt * 6));
+    const pos = Cm.geometry.attributes.position, R0 = CD.rest, sway = rig.capeSway || 0;
+    for (let i = 0; i < pos.count; i++) {
+      const f = CD.f[i], sx = CD.sx[i], wave = Math.sin(T * (2.4 + 9 * mv) - f * 4 + sx * 3) * (0.005 + 0.018 * mv) * f;
+      const back = CD.flare * Math.pow(f, 1.4) * CD.len * 0.6;
+      pos.setXYZ(i, R0[i * 3] + sway * f * f * 0.14, R0[i * 3 + 1] + back * 0.4 * f + dk * 0.02 * f, R0[i * 3 + 2] - back - wave);
+    }
+    pos.needsUpdate = true; Cm.geometry.computeVertexNormals();
+    for (const st of Cm.children) if (st.userData.cf) { const [f, sx] = st.userData.cf, c = Math.round(((sx / lerp(0.6, 0.86, f)) + 1) / 2 * 14), r = Math.round(f * (CD.long ? 14 : 11)), i = r * 15 + clamp(c, 0, 14); st.position.set(pos.getX(i), pos.getY(i), pos.getZ(i) - 0.004); st.rotation.y = Math.PI; }
+  }
+  // The cushion of wind: wisps swirl faster and trail back when gliding, fade when resting on the ground or down
+  const W = P.wind, gone = Math.max(dk, P.onGround || 0);
+  W.wisps.forEach((w, i) => {
+    w.spin.rotation.z += dt * w.sp * (1 + 1.6 * mv);
+    w.tilt.rotation.x = Math.PI / 2 - 0.45 * mv; w.tilt.position.set(0, w.y + rig.body.position.y * 0.4, -0.06 * mv);
+    w.m.scale.set(w.r * (1 + 0.1 * mv), w.r * (1 + 0.6 * mv), w.r);
+    w.m.material.opacity = (w.op + 0.08 * mv) * (0.75 + 0.25 * Math.sin(T * 2.7 + i * 2)) * (1 - gone);
+  });
+  W.specks.forEach((sp, i) => {
+    const u = (T * 0.35 + sp.userData.ph) % 1, a = i * 1.6 + T * (1.2 + mv);
+    sp.position.set(Math.cos(a) * (0.16 + u * 0.1), 0.02 + u * 0.16, Math.sin(a) * (0.16 + u * 0.1) - 0.08 * mv);
+    sp.material.opacity = Math.sin(u * Math.PI) * 0.55 * (1 - gone);
+  });
+  // A soft glow where a ghost hand holds something
+  const held = rig.weapon && rig.weapon.parent === rig.hand;
+  P.wispR.visible = !!held && dk < 0.5; P.wispR.material.opacity = 0.22 + 0.1 * Math.sin(T * 5.3);
+  let busyL = false; for (const c of rig.handL.children) if (c !== P.wispL && c.visible && !c.userData.ring && (c.isMesh || c.children.length)) { busyL = true; break; }
+  P.wispL.visible = busyL && dk < 0.5; P.wispL.material.opacity = 0.2 + 0.08 * Math.sin(T * 4.7 + 1);
+  // Held while gliding, the weapon streams back with the wind rather than swinging forward like a pendulum
+  if (held && !rig.attacking && rig.weaponRest && !P.wFly) rig.weapon.rotation.x = rig.weaponRest.x - rig.armR.rotation.x * 1.9;
+  // Put away, the weapon floats upright beside the pillow, bobbing a beat behind it and slowly turning
+  const Mt = rig.sheathMount;
+  if (Mt && Mt.userData.pillowFloat) { const b = Mt.userData.base; Mt.position.set(b.x, b.y + Math.sin(ph - 1.2) * 0.025, b.z - 0.06 * mv); Mt.rotation.set(-0.2 * mv + Math.sin(ph) * 0.03, Math.sin(T * 0.45) * 0.7, -0.08 + Math.sin(ph) * 0.05); }
+}
+{
+  const baseExtrasPw = animHeroExtras;
+  animHeroExtras = function (rig, dt, moving, T, speed) { baseExtrasPw(rig, dt, moving, T, speed); if (rig.pillow) pillowAnimate(rig, dt, moving, T, speed); };
+}
+/** After the frame's poses: settle on the ground rather than sink through it, squashing when pressed down,
+ *  scale the hover shadow with the height, and glide the weapon between the ghost hand and its resting spot. */
+const _pv = new THREE.Vector3(), _pq = new THREE.Quaternion(), _pq2 = new THREE.Quaternion();
+function pillowFinalize(rig, dt) {
+  const P = rig.pillow; if (!P) return;
+  P.lower.scale.set(1, 1, 1);
+  P.cushion.updateWorldMatrix(true, false);
+  const ground = rig.root.getWorldPosition(_pv).y, M = P.cushion.matrixWorld, hx = 0.24, hz = 0.15;
+  let low = 1e9;
+  for (const x of [-hx, hx]) for (const y of [PIL.ZB, PIL.ZT]) for (const z of [-hz, hz]) { _pv.set(x, y, z).applyMatrix4(M); low = Math.min(low, _pv.y); }
+  const lift = Math.max(0, ground + 0.004 - low);
+  if (lift > 0) rig.body.position.y += lift / (rig.root.getWorldScale(_pv).y || 1);
+  P.onGround = lerp(P.onGround || 0, lift > 0.004 ? 1 : 0, 1 - Math.exp(-dt * 8));
+  const upright = Math.abs(rig.body.rotation.z) < 0.35 && Math.abs(Math.sin(rig.body.rotation.x)) < 0.35;
+  P.press = lerp(P.press || 0, upright ? clamp(lift * 1.6, 0, 0.2) : 0, 1 - Math.exp(-dt * 12));
+  if (P.press > 0.002) P.lower.scale.set(1 + P.press * 0.5, 1 - P.press, 1 + P.press * 0.4);
+  // The hover shadow tightens and darkens as the pillow dips, spreads and fades as it rises
+  if (rig.blob) {
+    if (!rig.blob.userData.own) { rig.blob.material = rig.blob.material.clone(); rig.blob.userData.own = true; }
+    const h = Math.max(0, low - ground), k = clamp(h / 0.3, 0, 1);
+    rig.blob.scale.set(0.7 + k * 0.35, 1, 0.62 + k * 0.3); rig.blob.material.opacity = 1 - k * 0.45;
+  }
+  // The weapon glides between the hand and its resting spot instead of jumping
+  const w = rig.weapon;
+  if (w && w.parent) {
+    if (P.wPar && P.wPar !== w.parent && P.wLast) P.wFly = { t: 0, dur: rig.attacking ? 0.1 : 0.32, p: P.wLast.p.clone(), q: P.wLast.q.clone() };
+    P.wPar = w.parent;
+    if (P.wFly) {
+      const F = P.wFly; F.t += dt; const u = _eo(clamp(F.t / F.dur, 0, 1));
+      w.parent.updateWorldMatrix(true, false); w.updateMatrix();
+      const tw = w.getWorldPosition(new THREE.Vector3()), tq = w.getWorldQuaternion(new THREE.Quaternion());
+      const wp = F.p.clone().lerp(tw, u), wq = F.q.clone().slerp(tq, u);
+      w.position.copy(w.parent.worldToLocal(wp)); w.quaternion.copy(w.parent.getWorldQuaternion(_pq).invert().multiply(wq));
+      if (F.t >= F.dur) P.wFly = null;
+    }
+    w.updateWorldMatrix(true, false);
+    (P.wLast || (P.wLast = { p: new THREE.Vector3(), q: new THREE.Quaternion() })); w.getWorldPosition(P.wLast.p); w.getWorldQuaternion(P.wLast.q);
+  }
+}
+{
+  // Head turns and nods bend the soft upper half, gentler than a head would turn: the layers keep their own
+  // (undamped) values from frame to frame, and only what is drawn is softened.
+  const baseSyncPw = Game.prototype.syncHero;
+  Game.prototype.syncHero = function (dt) {
+    const r = this.heroRig, P = r && r.pillow;
+    if (P && P.headRaw) r.head.rotation.copy(P.headRaw);
+    baseSyncPw.call(this, dt);
+    if (!P) return;
+    (P.headRaw || (P.headRaw = new THREE.Euler())).copy(r.head.rotation);
+    r.head.rotation.set(r.head.rotation.x * 0.5, r.head.rotation.y * 0.45, r.head.rotation.z * 0.55);
+    pillowFinalize(r, dt);
   };
 }
 
