@@ -18549,10 +18549,52 @@ button.it:active { transform: scale(1.05, .88); transition-duration: .06s; }
     if (i0 < 0 || i1 < 0) return h;
     return h.slice(0, i0) + '<div class="eqrow wrow">' + this.wardrobeHTML() + h.slice(i1);
   };
+  // The mirror's metal reflects a lit studio, not the world's sky: the mirror looks at the heroes almost level,
+  // so upright metal (blades, breastplates, mail) would mirror the dark ground half of the world's environment
+  // and go black. Its own environment has a soft floor, a front fill and key and rim lights; it is swapped in
+  // only while the mirror draws.
+  const studioEnv = () => {
+    if (MIRROR.env) return MIRROR.env;
+    const N = 64, key = new THREE.Vector3(0.35, 0.67, 0.67).normalize(), rim = new THREE.Vector3(-0.55, 0.45, -0.7).normalize(), fill = new THREE.Vector3(0, -0.15, 1).normalize(), d = new THREE.Vector3();
+    const dirs = [(u, v) => [1, -v, -u], (u, v) => [-1, -v, u], (u, v) => [u, 1, v], (u, v) => [u, -1, -v], (u, v) => [u, -v, 1], (u, v) => [-u, -v, -1]];
+    const faces = dirs.map(f => {
+      const c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'), img = g.createImageData(N, N);
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        d.set(...f(2 * (x + 0.5) / N - 1, 2 * (y + 0.5) / N - 1)).normalize();
+        const lo = smooth(0, 1, -d.y), hi = smooth(0, 1, d.y);
+        let r = lerp(lerp(0.64, 0.4, lo), 0.92, hi), gg = lerp(lerp(0.62, 0.36, lo), 0.92, hi), b = lerp(lerp(0.72, 0.48, lo), 0.98, hi);
+        const k = Math.pow(Math.max(0, d.dot(key)), 30) * 2.2, rm = Math.pow(Math.max(0, d.dot(rim)), 18) * 1.3, fl = Math.pow(Math.max(0, d.dot(fill)), 4) * 0.35;
+        r += k + rm * 0.9 + fl; gg += k * 0.96 + rm * 0.95 + fl; b += k * 0.9 + rm + fl;
+        const i = (y * N + x) * 4; img.data[i] = Math.min(255, r * 255); img.data[i + 1] = Math.min(255, gg * 255); img.data[i + 2] = Math.min(255, b * 255); img.data[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0); return c;
+    });
+    const t = new THREE.CubeTexture(faces); t.needsUpdate = true;
+    return MIRROR.env = t;
+  };
+  // The world's light doesn't reach the mirror either: its heroes stand at the world's origin, so the world's
+  // ambient occlusion and bounce light (looked up by position) would darken everything they reflect, and the
+  // hero-relative shading (grounding, mud, the wading line) would be measured from the real hero's feet.
+  const giK = new THREE.Vector4(), giSun = new THREE.Color(), pl = new THREE.Vector3();
+  const baseFrameEnv = MIRROR.frame;
+  MIRROR.frame = function (ui, dt) {
+    giK.copy(U.uGIK.value); giSun.copy(U.uGISun.value); pl.copy(U.uPlayer.value);
+    U.uGIK.value.set(0, 0, 0, 0); U.uGISun.value.setRGB(0, 0, 0); U.uPlayer.value.set(0, 0.2, 0);
+    try { baseFrameEnv.call(this, ui, dt); }
+    finally {
+      U.uGIK.value.copy(giK); U.uGISun.value.copy(giSun); U.uPlayer.value.copy(pl);
+      if (this.swapped) { for (const m of this.swapped) m.envMap = ENV.tex; this.swapped = null; }
+    }
+  };
+  const swapEnv = M => {
+    const env = studioEnv(); M.swapped = [];
+    M.scene.traverse(o => { if (!o.isMesh) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (m && m.envMap && m.envMap === ENV.tex) { m.envMap = env; M.swapped.push(m); } });
+  };
   // The mirror: a tufted floor cushion under each pillow, in the colour of its light
   const baseInitM = MIRROR.init;
   MIRROR.init = function () {
     baseInitM.call(this);
+    this.r.toneMappingExposure = 0.94;   // a touch lower, now that the world's shade no longer dims the mirror
     const prof = [[0.001, 0], [0.27, 0.004], [0.35, 0.022], [0.375, 0.046], [0.355, 0.068], [0.27, 0.085], [0.12, 0.083], [0.035, 0.071], [0.001, 0.068]];
     const geo = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 48), pip = new THREE.TorusGeometry(0.374, 0.008, 6, 64), btn = new THREE.SphereGeometry(1, 12, 8);
     const dark = new THREE.Color('#2a2238');
@@ -18565,6 +18607,7 @@ button.it:active { transform: scale(1.05, .88); transition-duration: .06s; }
       this.scene.add(g); return { g, m, m2, pad };
     });
     this.scene.onBeforeRender = () => {
+      swapEnv(this);
       for (const P of this.poufs) {
         P.g.visible = P.pad.visible; P.g.position.set(P.pad.position.x, 0, P.pad.position.z);
         P.m.color.copy(P.pad.material.color).lerp(dark, 0.62); P.m2.color.copy(P.m.color).multiplyScalar(0.7);
