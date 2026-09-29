@@ -18434,6 +18434,145 @@ const SEW_ICON = {
   document.head.insertAdjacentHTML('beforeend', '<style>.toast img, .dico img, .it img, .row2 img, .vsi img, #upChip img, #swapChip img { image-rendering: auto; }</style>');
 }
 
+// ---------------------------------------------------------------- the wardrobe (the bag, for a pillow)
+// - Item tiles are little cushions: four pinched corners, piping in the rarity colour, a stitched line
+//   inside it, a faint weave. The selected one plumps up; pressing one squashes it.
+// - The worn slots sit on a pillow: the armour sewn on its belly like a patch, the weapon floating at its
+//   side on a breath of wind (as the ghost hand holds it), the trinket hanging from an ear on a thread. The
+//   pillow wears the colour of its armour and puffs up when you change what it wears. Empty slots show a
+//   stitched outline of what goes there.
+// - Upgrade marks are sewn-on buttons.
+// - In the mirror, the pillow floats over a tufted floor cushion, against a night sky.
+{
+  const CUSH = 'M4,4 Q50,11 96,4 Q89,50 96,96 Q50,89 4,96 Q11,50 4,4Z', CUSH_IN = 'M12,12 Q50,18 88,12 Q82,50 88,88 Q50,82 12,88 Q18,50 12,12Z';
+  const svgUrl = s => `url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+  const cushion = (c, k) => svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>
+    <defs><radialGradient id='f' cx='50%' cy='40%' r='64%'><stop offset='0' stop-color='${c}' stop-opacity='${0.26 * k}'/><stop offset='.65' stop-color='${c}' stop-opacity='${0.08 * k}'/><stop offset='1' stop-color='#000' stop-opacity='.36'/></radialGradient>
+    <pattern id='w' width='3' height='3' patternUnits='userSpaceOnUse'><path d='M0 .5H3M.5 0V3' stroke='#fff' stroke-opacity='.045' stroke-width='.8'/></pattern></defs>
+    <path d='${CUSH}' fill='#140e20' fill-opacity='.35'/><path d='${CUSH}' fill='url(#f)'/><path d='${CUSH}' fill='url(#w)'/>
+    <ellipse cx='38' cy='28' rx='24' ry='13' fill='#fff' fill-opacity='.05'/>
+    <path d='${CUSH}' fill='none' stroke='${c}' stroke-opacity='${0.25 + 0.45 * k}' stroke-width='2.2' vector-effect='non-scaling-stroke'/>
+    <path d='${CUSH_IN}' fill='none' stroke='${c}' stroke-opacity='${0.12 + 0.45 * k}' stroke-width='1.1' stroke-dasharray='3.2 2.6' vector-effect='non-scaling-stroke'/></svg>`);
+  // Stitched outlines of what goes in an empty slot: a needle, a pillowcase, an earring
+  const ghost = d => svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><g fill='none' stroke='#e8dcc0' stroke-opacity='.42' stroke-width='1.5' stroke-dasharray='2.6 2.2' stroke-linecap='round'>${d}</g></svg>`);
+  const G_WEAPON = ghost(`<path d='M13 35 L34 12 L37 11 L36 14 L15 37 Z'/><ellipse cx='31.5' cy='16.5' rx='1.4' ry='3' transform='rotate(45 31.5 16.5)'/><path d='M10 32 L16 38'/><circle cx='10.5' cy='37.5' r='2.6'/>`);
+  const G_ARMOR = ghost(`<path d='M9 10 Q24 15 39 10 Q35 24 39 38 Q24 35 9 38 Q13 24 9 10Z'/><circle cx='19.5' cy='21' r='1'/><circle cx='28.5' cy='21' r='1'/><path d='M21.5 25 Q24 27 26.5 25'/>`);
+  const G_TRINKET = ghost(`<path d='M24 6 V12'/><circle cx='24' cy='20' r='7.5'/><path d='M24 28 L28 33 L24 40 L20 33 Z'/>`);
+  const r0 = RARITIES.map(r => r.color);
+  document.head.insertAdjacentHTML('beforeend', `<style>
+:root { ${r0.map((c, i) => `--cush-r${i}: ${cushion(c, 1)};`).join(' ')} --cush-empty: ${cushion('#e8dcc0', 0.12)}; --cush-mask: ${svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'><path d='${CUSH}'/></svg>`)}; }
+.it, .it.g4 { background: var(--cush, var(--cush-empty)) center / 100% 100% no-repeat; box-shadow: none; border-radius: 10px; transition: transform .18s cubic-bezier(.3,1.7,.5,1), filter .18s; }
+.it.empty { background: var(--cush-empty) center / 100% 100% no-repeat; box-shadow: none; }
+.it.g3::after, .it.g4::after { border-radius: 0; -webkit-mask: var(--cush-mask) center / 100% 100% no-repeat; mask: var(--cush-mask) center / 100% 100% no-repeat; }
+.it.g4 { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--rc) 45%, transparent)); }
+.it.sel { box-shadow: none; transform: scale(1.08); filter: drop-shadow(0 0 2.5px rgba(246,220,152,.95)) drop-shadow(0 4px 6px rgba(0,0,0,.45)); z-index: 1; }
+button.it:active { transform: scale(1.05, .88); transition-duration: .06s; }
+.dico { background: var(--cush, var(--cush-r0)) center / 100% 100% no-repeat; box-shadow: none; border-radius: 0; }
+.it .up, .it .slotup { right: 1px; top: 1px; width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center; font-size: 8.5px; line-height: 1; color: #eaffea; text-shadow: none;
+  background: radial-gradient(circle at 36% 30%, #9cf29a, #34863a 70%); box-shadow: 0 1px 2px rgba(0,0,0,.55), 0 0 0 1.5px #1b1328; outline: 1px dashed rgba(234,255,234,.7); outline-offset: -4px; }
+.it .slotup { right: -4px; top: -4px; animation: slotup 1.4s ease-in-out infinite; }
+/* The wardrobe */
+.eqrow.wrow { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 14px; padding: 8px 12px 2px; }
+.eqrow.wrow .cap { flex: 1 1 120px; min-width: 120px; padding-left: 0; }
+.wardrobe { position: relative; flex: none; width: 236px; height: 118px; }
+.wardrobe svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.wardrobe .wb { fill: var(--body); stroke: rgba(20,12,30,.75); stroke-width: 2; }
+.wardrobe .wsh { fill: rgba(0,0,0,.28); filter: blur(3px); }
+.wardrobe .wp { fill: none; stroke: var(--pipe); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.wardrobe .wf { fill: #241820; } .wardrobe .wf .hl { fill: #fff; } .wardrobe .wm { fill: none; stroke: #241820; stroke-width: 2.2; stroke-linecap: round; }
+.wardrobe .wc { fill: #ffc94a; opacity: .8; }
+.wardrobe .wt { fill: none; stroke: #e8dcc0; stroke-width: 1.3; stroke-dasharray: 3 2.4; opacity: .7; }
+.wardrobe .wk { fill: #e8dcc0; opacity: .8; }
+.wardrobe .ww { fill: none; stroke: #e6f4ff; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 0 6; opacity: .55; animation: wwind 1.4s linear infinite; }
+.wardrobe .wg { fill: url(#wglow); }
+@keyframes wwind { to { stroke-dashoffset: -12; } }
+.wardrobe .ws { position: absolute; width: 52px; height: 52px; }
+.wardrobe .ws .it { width: 100%; height: 100%; }
+.wardrobe .s-trinket { left: 6px; top: 46px; transform-origin: 26px -34px; animation: wsway 3.4s ease-in-out infinite; }
+.wardrobe .s-armor { left: 92px; top: 52px; }
+.wardrobe .s-weapon { left: 180px; top: 36px; animation: wbob 2.6s ease-in-out infinite; }
+.wardrobe .s-weapon .it.empty { background-image: ${G_WEAPON}, var(--cush-empty); background-size: 72% 72%, 100% 100%; background-position: center; background-repeat: no-repeat; }
+.wardrobe .s-armor .it.empty { background-image: ${G_ARMOR}, var(--cush-empty); background-size: 72% 72%, 100% 100%; background-position: center; background-repeat: no-repeat; }
+.wardrobe .s-trinket .it.empty { background-image: ${G_TRINKET}, var(--cush-empty); background-size: 72% 72%, 100% 100%; background-position: center; background-repeat: no-repeat; }
+@keyframes wsway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes wbob { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(2px); } }
+.wardrobe.puff .wpil { animation: wpuff .75s cubic-bezier(.3,1.6,.5,1); transform-origin: 118px 60px; }
+@keyframes wpuff { 30% { transform: scale(1.08, .94); } 60% { transform: scale(.97, 1.04); } }
+@media (max-height: 560px) { .wardrobe { transform: scale(.76); transform-origin: 0 0; margin: 0 -56px -28px 0; } }
+@media (prefers-reduced-motion: reduce) { .wardrobe .ws, .wardrobe .ww, .wardrobe.puff .wpil { animation: none; } }
+/* The mirror at night: faint stars and a crescent moon */
+.mirror::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(1.3px 1.3px at 9% 16%, rgba(255,255,255,.75), transparent 70%), radial-gradient(1px 1px at 23% 34%, rgba(255,255,255,.5), transparent 70%),
+    radial-gradient(1.2px 1.2px at 41% 11%, rgba(255,255,255,.6), transparent 70%), radial-gradient(1px 1px at 62% 27%, rgba(255,255,255,.45), transparent 70%),
+    radial-gradient(1.4px 1.4px at 78% 13%, rgba(255,255,255,.7), transparent 70%), radial-gradient(1px 1px at 93% 38%, rgba(255,255,255,.45), transparent 70%),
+    radial-gradient(1px 1px at 55% 45%, rgba(255,255,255,.3), transparent 70%), radial-gradient(1px 1px at 16% 52%, rgba(255,255,255,.3), transparent 70%); }
+.mirror .mmoon { position: absolute; right: 16px; top: 12px; width: 15px; height: 15px; border-radius: 50%; box-shadow: -4px 3px 0 0 rgba(255,236,190,.55); pointer-events: none; transform: rotate(-20deg); }
+</style>`);
+  // Tiles and the detail panel's icon get the cushion in their rarity colour
+  const cushVar = it => 'var(--cush-r' + (it.unique ? 4 : it.rarity | 0) + ')';
+  const baseTileW = UI3.prototype.tileHTML;
+  UI3.prototype.tileHTML = function (it, key, o = {}) {
+    const h = baseTileW.call(this, it, key, o);
+    return it ? h.replace('style="', `style="--cush:${cushVar(it)};`) : h;
+  };
+  const baseDetailW = UI3.prototype.detailHTML;
+  UI3.prototype.detailHTML = function (it, key, ctx) {
+    let h = baseDetailW.call(this, it, key, ctx);
+    if (it) h = h.replace('class="dico" style="', `class="dico" style="--cush:${cushVar(it)};`);
+    return h.replace(/(<div class="mirror [^"]*"[^>]*>)/, '$1<i class="mmoon"></i>');
+  };
+  // The worn slots, on a pillow
+  UI3.prototype.wardrobeHTML = function () {
+    const p = this.g.player, a = p.equip.armor, L = a && (a.look || ItemLook.make(a)), R = a ? (a.unique ? 4 : a.rarity | 0) : 0;
+    const body = !a ? PIL_CREAM : a.icon === 'tunic' ? mixHex(PIL_CREAM, L.cloth, 0.7) : a.icon === 'robe' ? mixHex(PIL_CREAM, L.cloth, 0.55) : PIL_CREAM;
+    const pipe = a && R >= 1 ? mixHex(body, L.trim, 0.75) : shade(body, 0.72);
+    const slot = s => {
+      let h = this.tileHTML(p.equip[s], 'eq:' + s, { label: s[0].toUpperCase() + s.slice(1), noUp: true });
+      if (this.bestFor(s)) h = h.replace(/<\/(button|div)>$/, '<b class="slotup">▲</b></$1>');
+      return `<div class="ws s-${s}">${h}</div>`;
+    };
+    const P = 'M70,8 Q118,18 166,8 Q156,58 164,108 Q118,116 72,108 Q80,58 70,8Z';
+    return `<div class="wardrobe ${this.powerFlash ? 'puff' : ''}" style="--body:${body};--pipe:${pipe}"><svg viewBox="0 0 236 118" aria-hidden="true">
+      <defs><radialGradient id="wglow"><stop offset="0" stop-color="#e6f4ff" stop-opacity=".55"/><stop offset="1" stop-color="#e6f4ff" stop-opacity="0"/></radialGradient></defs>
+      <path class="wt" d="M70,10 C54,4 36,20 32,46"/><circle class="wk" cx="70" cy="10" r="2.4"/>
+      <ellipse class="wsh" cx="118" cy="116" rx="40" ry="4"/>
+      <g class="wpil"><path class="wb" d="${P}"/><path class="wp" d="${P}" transform="translate(118 58) scale(.92) translate(-118 -58)"/>
+        <ellipse class="wf" cx="104" cy="31" rx="3.3" ry="4.6"/><ellipse class="wf" cx="132" cy="31" rx="3.3" ry="4.6"/>
+        <circle class="wf hl" cx="103" cy="29.4" r="1.1"/><circle class="wf hl" cx="131" cy="29.4" r="1.1"/>
+        <path class="wm" d="M112,39 Q118,44.5 124,39"/><circle class="wc" cx="94" cy="38" r="1.6"/><circle class="wc" cx="142" cy="38" r="1.6"/></g>
+      <path class="ww" d="M160,64 C167,56 172,74 181,64"/><circle class="wg" cx="183" cy="64" r="10"/>
+    </svg>${slot('trinket')}${slot('armor')}${slot('weapon')}</div>`;
+  };
+  const baseBagW = UI3.prototype.bagHTML;
+  UI3.prototype.bagHTML = function () {
+    const h = baseBagW.call(this), i0 = h.indexOf('<div class="eqrow">'), i1 = h.indexOf('<div class="cap">', i0);
+    if (i0 < 0 || i1 < 0) return h;
+    return h.slice(0, i0) + '<div class="eqrow wrow">' + this.wardrobeHTML() + h.slice(i1);
+  };
+  // The mirror: a tufted floor cushion under each pillow, in the colour of its light
+  const baseInitM = MIRROR.init;
+  MIRROR.init = function () {
+    baseInitM.call(this);
+    const prof = [[0.001, 0], [0.27, 0.004], [0.35, 0.022], [0.375, 0.046], [0.355, 0.068], [0.27, 0.085], [0.12, 0.083], [0.035, 0.071], [0.001, 0.068]];
+    const geo = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 48), pip = new THREE.TorusGeometry(0.374, 0.008, 6, 64), btn = new THREE.SphereGeometry(1, 12, 8);
+    const dark = new THREE.Color('#2a2238');
+    this.poufs = this.pads.map(pad => {
+      const g = new THREE.Group(), m = new THREE.MeshStandardMaterial({ color: 0x6a6088, roughness: 0.93 }), m2 = new THREE.MeshStandardMaterial({ color: 0x4a4260, roughness: 0.8 });
+      g.add(new THREE.Mesh(geo, m));
+      const pp = new THREE.Mesh(pip, m2); pp.rotation.x = Math.PI / 2; pp.position.y = 0.046; g.add(pp);
+      const b = new THREE.Mesh(btn, m2); b.scale.set(0.026, 0.012, 0.026); b.position.y = 0.072; g.add(b);
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, cr = new THREE.Mesh(BOXC, m2); cr.scale.set(0.2, 0.004, 0.005); cr.position.set(Math.cos(a) * 0.14, 0.079, Math.sin(a) * 0.14); cr.rotation.set(0, -a, 0.09); g.add(cr); }
+      this.scene.add(g); return { g, m, m2, pad };
+    });
+    this.scene.onBeforeRender = () => {
+      for (const P of this.poufs) {
+        P.g.visible = P.pad.visible; P.g.position.set(P.pad.position.x, 0, P.pad.position.z);
+        P.m.color.copy(P.pad.material.color).lerp(dark, 0.62); P.m2.color.copy(P.m.color).multiplyScalar(0.7);
+      }
+    };
+  };
+}
+
 // =============================================================================
 // Boot
 // =============================================================================
