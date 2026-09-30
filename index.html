@@ -296,6 +296,8 @@ body.touch.lefty #tTop { left: auto; right: calc(170px + env(safe-area-inset-rig
 @keyframes titleGlow { 0%, 100% { text-shadow: 0 0 50px rgba(255,138,61,.45), 0 5px 0 #3a2410; } 50% { text-shadow: 0 0 80px rgba(255,170,90,.75), 0 5px 0 #3a2410; } }
 @media (prefers-reduced-motion: reduce) { #title h1 { animation: none; } }
 #title h1 sup { font-size: .32em; vertical-align: top; color: var(--ember); margin-left: .1em; }
+#title #moved { margin: -10px 0 22px; padding: 8px 18px; border-radius: 999px; font: 800 14px var(--ui); color: #f2c46d; text-decoration: none; background: rgba(20,12,34,.72); box-shadow: inset 0 0 0 1px rgba(242,196,109,.55), 0 4px 18px rgba(0,0,0,.4); }
+#title #moved:hover, #title #moved:focus-visible { filter: brightness(1.08); outline: none; }
 #title p { margin: 10px 0 26px; font: 700 18px var(--ui); color: var(--text); max-width: 46ch; text-align: center; text-shadow: 0 2px 8px #000; }
 #title .row { display: flex; gap: 10px; }
 #title .btn { font-size: 17px; padding: 12px 24px; border-radius: 12px; }
@@ -413,6 +415,7 @@ body.touch #banner { top: 17%; }
 <div id="title">
   <h1>Emberwild<sup>3D</sup></h1>
   <p>The Shadow Warden stirs in the Ruined Temple. Gather the crystal shards, grow strong, and bring light back to the valley.</p>
+  <a id="moved" href="/LeleliloAdventure/">✦ The pillow's journey continues in Lelelilo's Adventure — play it →</a>
   <div class="row"><button class="btn gold hidden" id="btnCont">Continue</button><button class="btn" id="btnNew">New adventure</button></div>
   <div class="keys" id="titleKeys">WASD to move · Space or click to attack · Shift to roll · F to talk. Everything you hit goes flying.</div>
 </div>
